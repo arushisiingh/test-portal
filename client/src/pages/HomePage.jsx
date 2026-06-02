@@ -1,20 +1,20 @@
 import { useNavigate } from 'react-router-dom';
 
 const cards = [
-  { title: 'Smart FAQ', emoji: '📚', description: 'AI-powered knowledge hub with semantic search, trending questions, smart categories, and instant answers about the Samagama program.', link: '/faq', theme: 'faq', meta: '50+ FAQs · No login needed' },
-  { title: 'Doubt Solver', emoji: '💬', description: 'Reddit-style community Q&A with AI hints, upvotes, comment threads, solved badges, and SP Points rewards for helpful answers.', link: '/doubts', theme: 'doubt', meta: '340+ contributors' },
-  { title: 'Yaksha-mini', emoji: '✦', description: 'Your personal AI companion — internship guidance, resume review, interview prep, career roadmaps. No sign-in, no waiting.', link: '/yaksha', theme: 'yaksha', meta: 'Powered by Anthropic' }
+  { title: 'Smart FAQ', emoji: '📚', description: 'AI-powered knowledge hub with semantic search. Get instant answers to program questions without the login hassle.', link: '/faq', theme: 'faq', meta: '50+ FAQs · No login needed' },
+  { title: 'Leaderboard', emoji: '🏆', description: 'See where you rank. Track top contributors, celebrate peer achievements, and compete for recognition across the Samagama community.', link: '/leaderboard', theme: 'leaderboard', meta: '340+ contributors' },
+  { title: 'Zoro', emoji: '✨', description: 'Your AI companion for SP points, NOC deadlines, FAQs, navigation help—and anything else you need. Available without signing in.', link: '/yaksha', theme: 'zoro', meta: 'Platform assistant · No sign-in needed' }
 ];
 
 const trending = [
-  { text: 'NOC mandatory?', link: '/faq' },
-  { text: 'Stipend details', link: '/faq' },
-  { text: 'Final year eligible?', link: '/faq' },
-  { text: 'Remote available?', link: '/faq' },
-  { text: 'Application docs', link: '/faq' },
-  { text: 'Best DSA resources', link: '/doubts' },
-  { text: 'SOP writing tips', link: '/doubts' },
-  { text: 'IIT Ropar interview prep', link: '/doubts' }
+  { text: 'NOC mandatory?', link: '/faq?cat=noc&question=Is%20NOC%20mandatory%20for%20internship%20participation%3F&label=NOC%20Mandatory' },
+  { text: 'Stipend details', link: '/faq?cat=stipend&question=How%20much%20stipend%20is%20offered%3F&label=Stipend%20Details' },
+  { text: 'Final year eligible?', link: '/faq?cat=eligibility&question=Are%20final%20year%20students%20eligible%3F&label=Final%20Year%20Eligible' },
+  { text: 'Remote available?', link: '/faq?cat=mode&question=Is%20remote%20internship%20available%3F&label=Remote%20Available' },
+  { text: 'Application docs', link: '/faq?cat=documents&question=Which%20documents%20are%20required%3F&label=Application%20Docs' },
+  { text: 'Best DSA resources', link: '/faq?search=DSA%20resources' },
+  { text: 'SOP writing tips', link: '/faq?search=SOP' },
+  { text: 'IIT Ropar interview prep', link: '/faq?search=Interview' }
 ];
 
 function HomePage() {
@@ -28,8 +28,7 @@ function HomePage() {
           <h1 className="hero-title">Don't sign in yet.<br /><span className="grad-text">Read first.</span></h1>
           <p className="hero-sub">Almost every question has been asked before — usually by someone else, fifteen minutes earlier. Meet <em>Yaksha</em>. It's been waiting.</p>
           <div className="hero-actions">
-            <button className="btn-primary" onClick={() => navigate('/faq')}>Browse the FAQ →</button>
-            <button className="btn-secondary" onClick={() => navigate('/doubts')}>💬 Community Doubts</button>
+            <button className="btn-primary" onClick={() => navigate('/overview')}>Overview →</button>
           </div>
           <div className="stats-bar">
             <div className="stat">
@@ -51,35 +50,6 @@ function HomePage() {
           </div>
         </div>
       </section>
-
-      <div className="sp-card">
-        <div className="sp-left">
-          <div className="sp-orb">⚡</div>
-          <div>
-            <h3>SP Points — Student Reputation</h3>
-            <p>Earn SP by answering doubts, helping peers, and daily contributions</p>
-          </div>
-        </div>
-        <div className="sp-breakdown">
-          <div className="sp-item">
-            <strong style={{ color: '#c4b5fd' }}>+10</strong>
-            <small>Accepted answer</small>
-          </div>
-          <div className="sp-item">
-            <strong style={{ color: '#fbbf24' }}>+7</strong>
-            <small>Highly useful</small>
-          </div>
-          <div className="sp-item">
-            <strong style={{ color: '#34d399' }}>+3</strong>
-            <small>Daily streak</small>
-          </div>
-          <div className="sp-item">
-            <strong style={{ color: '#f87171' }}>−5</strong>
-            <small>Spam/toxic</small>
-          </div>
-        </div>
-        <button className="btn-secondary">Sign in to view your SP →</button>
-      </div>
 
       <section className="feature-grid">
         {cards.map(card => (
@@ -107,7 +77,7 @@ function HomePage() {
       </div>
 
       <div className="footer-section">
-        <p>Already applied? <button className="link-btn" onClick={() => navigate('/faq')}>Sign in here →</button></p>
+        <p>Already applied? <button className="link-btn" onClick={() => navigate('/login')}>Sign in here →</button></p>
         <p className="footer-meta">samagama.in · Vicharanashala · IIT Ropar · v3.2</p>
       </div>
     </div>

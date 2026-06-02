@@ -37,3 +37,75 @@ export async function answerDoubt(id, payload) {
   });
   return res.json();
 }
+
+export async function fetchAnnouncementReadState(userId) {
+  const res = await fetch(`${API_BASE}/api/announcements/read-state?userId=${encodeURIComponent(userId)}`);
+  return res.json();
+}
+
+export async function markAnnouncementRead(userId, announcementId) {
+  const res = await fetch(`${API_BASE}/api/announcements/read-state`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, announcementId }),
+  });
+  return res.json();
+}
+
+export async function fetchMyTeam(studentId, studentEmail = studentId) {
+  const params = new URLSearchParams();
+  params.set('studentId', studentId);
+  if (studentEmail) params.set('studentEmail', studentEmail);
+  const res = await fetch(`${API_BASE}/api/teams/me?${params.toString()}`);
+  return res.json();
+}
+
+export async function createTeam(payload) {
+  const res = await fetch(`${API_BASE}/api/teams/create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function requestJoinTeam(payload) {
+  const res = await fetch(`${API_BASE}/api/teams/request-join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function respondJoinRequest(requestId, action) {
+  const res = await fetch(`${API_BASE}/api/teams/join-requests/${encodeURIComponent(requestId)}/respond`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  return res.json();
+}
+
+export async function respondTeamInvite(inviteId, action) {
+  const res = await fetch(`${API_BASE}/api/teams/invites/${encodeURIComponent(inviteId)}/respond`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  return res.json();
+}
+
+export async function fetchAdminTeams() {
+  const res = await fetch(`${API_BASE}/api/admin/teams`);
+  return res.json();
+}
+
+export async function decideAdminTeam(teamId, action) {
+  const res = await fetch(`${API_BASE}/api/admin/teams/${encodeURIComponent(teamId)}/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  return res.json();
+}
