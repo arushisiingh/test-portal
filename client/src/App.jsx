@@ -85,10 +85,6 @@ function App() {
   const isHome = location.pathname === '/';
   const isLogin = location.pathname === '/login';
   const isDashboard = location.pathname.startsWith('/dashboard');
-  const isAdmin = location.pathname.startsWith('/admin');
-
-  // Global header — shown on all non-homepage, non-dashboard pages
-  const showGlobalHeader = !isHome && !isLogin && !isDashboard && !isAdmin;
 
   return (
     <AuthContext.Provider value={{ user, handleLogin, handleLogout }}>
@@ -111,19 +107,6 @@ function App() {
         )}
 
         {/* ── Login Page — no header needed ─────────────── */}
-
-        {/* ── Admin Dashboard Header ────────────────────── */}
-        {isAdmin && (
-          <header className="dash-header">
-            <div className="brand-wrap">
-              <span className="brand">Samagama</span>
-              <span className="badge admin">Admin Portal</span>
-            </div>
-            <nav className="nav-links">
-              <button onClick={handleLogout} className="sign-btn ghost">Sign Out</button>
-            </nav>
-          </header>
-        )}
 
         <main className={isHome ? 'page-container home-container' : 'page-container'}>
           {!authLoaded ? (

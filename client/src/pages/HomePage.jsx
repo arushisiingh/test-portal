@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import FluidFlowBackground from '../components/FluidFlowBackground';
 
 const cards = [
   { title: 'Smart FAQ', emoji: '📚', description: 'AI-powered knowledge hub with semantic search. Get instant answers to program questions without the login hassle.', link: '/faq', theme: 'faq', meta: '50+ FAQs · No login needed' },
@@ -22,6 +23,16 @@ function HomePage() {
 
   return (
     <div className="home-page">
+      <FluidFlowBackground
+        className="home-fluid-background"
+        colors={['#5227FF', '#FF9FFC', '#B19EEF', '#38BDF8']}
+        mouseForce={24}
+        cursorSize={130}
+        resolution={0.28}
+        autoDemo
+        autoSpeed={0.55}
+        autoIntensity={2.2}
+      />
       <section className="hero-wrap">
         <div className="hero-content">
           <p className="hero-pill"><span className="pdot"></span> Vicharanashala · IIT Ropar Internship Portal</p>
