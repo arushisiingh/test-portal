@@ -531,6 +531,11 @@ export function getJourneyPendingReviews() {
   return [...state.pendingReviews].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 }
 
+export function getJourneyHistory() {
+  const state = getJourneyState();
+  return [...(state.history || [])];
+}
+
 export function markJourneyMilestoneComplete(milestoneId, payload = {}) {
   const state = getJourneyState();
   const milestone = state.milestones[milestoneId];
@@ -1042,6 +1047,25 @@ export function downloadJourneyCertificate() {
   });
   milestone.status = 'completed';
   state.spPoints += 20;
+  const next = recomputeFlow(state);
+  saveState(next);
+  return next;
+}
+
+export function adjustJourneySpPoints(delta = 0, reason = '', payload = {}) {
+  const state = getJourneyState();
+  const now = new Date().toISOString();
+  const amount = Number(delta || 0);
+  state.spPoints = Math.max(0, Number(state.spPoints || 0) + amount);
+  state.history.unshift({
+    id: `hist-sp-${Date.now()}`,
+    milestoneId: payload.milestoneId || null,
+    type: amount >= 0 ? 'sp-credit' : 'sp-debit',
+    at: now,
+    by: payload.by || 'Admin',
+    title: amount >= 0 ? 'SP credited' : 'SP debited',
+    detail: `${amount >= 0 ? '+' : ''}${amount} SP${reason ? ` · ${reason}` : ''}`,
+  });
   const next = recomputeFlow(state);
   saveState(next);
   return next;

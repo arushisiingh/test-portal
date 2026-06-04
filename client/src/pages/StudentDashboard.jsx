@@ -2,9 +2,11 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AuthContext from '../authContext';
 import {
+  getAnnouncementDeadlineInfo,
+  getAnnouncementsForAudience,
   getAnnouncements,
   getAnnouncementCategoryIcon,
-  getUnreadAnnouncementCount,
+  isAnnouncementActive,
   formatAnnouncementTime,
 } from '../announcements';
 import JourneyDetailModal from './JourneyDetailModal';
@@ -1481,6 +1483,8 @@ function StudentDashboard() {
   const announcementDetailRef = useRef(null);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState([]);
   const [pendingReadAnnouncementId, setPendingReadAnnouncementId] = useState(null);
+  const [announcementSort, setAnnouncementSort] = useState('latest');
+  const [announcementAudienceFilter, setAnnouncementAudienceFilter] = useState('all');
   const [taskOverview, setTaskOverview] = useState(() => getTaskSummary(getInternshipTasks()));
   const [journeyTick, setJourneyTick] = useState(0);
   const loginTimestampRef = useRef(new Date());
@@ -1500,16 +1504,29 @@ function StudentDashboard() {
   const summaryCards = [
     { label: 'SP Points', value: String(journeyState.spPoints ?? 120) },
   ];
-  const sortedAnnouncements = useMemo(
-    () => [...announcements].sort((a, b) => {
+  const studentAnnouncements = useMemo(() => {
+    const audience = announcementAudienceFilter === 'all' ? 'All Students' : announcementAudienceFilter;
+    const active = getAnnouncementsForAudience(announcements, audience);
+    const filtered = active.filter(item => isAnnouncementActive(item));
+    const urgencyOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+    const sorted = [...filtered].sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return new Date(b.dateTime) - new Date(a.dateTime);
-    }),
-    [announcements],
-  );
+      if (announcementSort === 'pinned') return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || new Date(b.dateTime) - new Date(a.dateTime);
+      if (announcementSort === 'urgency') {
+        const diff = (urgencyOrder[a.urgencyLevel] ?? 9) - (urgencyOrder[b.urgencyLevel] ?? 9);
+        if (diff !== 0) return diff;
+      }
+      if (announcementSort === 'active') {
+        const activeDiff = Number(isAnnouncementActive(b)) - Number(isAnnouncementActive(a));
+        if (activeDiff !== 0) return activeDiff;
+      }
+      return new Date(b.dateTime || b.createdAt) - new Date(a.dateTime || a.createdAt);
+    });
+    return sorted;
+  }, [announcements, announcementAudienceFilter, announcementSort]);
   const unreadCount = useMemo(
-    () => announcements.filter(item => !readAnnouncementIds.includes(item.id)).length,
-    [announcements, readAnnouncementIds],
+    () => studentAnnouncements.filter(item => !readAnnouncementIds.includes(item.id)).length,
+    [studentAnnouncements, readAnnouncementIds],
   );
 
   useEffect(() => {
@@ -1672,7 +1689,7 @@ function StudentDashboard() {
                   </div>
 
                   <div style={navStyles.notificationList}>
-                    {sortedAnnouncements.length === 0 ? (
+                    {studentAnnouncements.length === 0 ? (
                       <div style={navStyles.emptyState}>
                         <strong style={navStyles.emptyTitle}>No announcements yet.</strong>
                         <p style={navStyles.emptyText}>
@@ -1680,7 +1697,7 @@ function StudentDashboard() {
                         </p>
                       </div>
                     ) : (
-                      sortedAnnouncements.map(announcement => {
+                      studentAnnouncements.map(announcement => {
                         const unread = !readAnnouncementIds.includes(announcement.id);
                         return (
                         <button
@@ -1802,9 +1819,18 @@ function StudentDashboard() {
 
               <div style={navStyles.modalMeta}>
                 <span style={navStyles.categoryBadge}>{announcementDetail.category}</span>
+                <span style={announcementFeedStyles.typeBadge}>{announcementDetail.urgencyLevel || announcementDetail.priority || 'Medium'}</span>
                 {announcementDetail.pinned && <span style={navStyles.pinnedBadge}>📌 Pinned Announcement</span>}
                 <span style={navStyles.adminBadge}>{announcementDetail.postedBy}</span>
                 <span style={navStyles.timeText}>{formatAnnouncementTime(announcementDetail.dateTime)}</span>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                <span style={announcementFeedStyles.categoryPill}>{announcementDetail.targetAudience || 'All Students'}</span>
+                <span style={announcementFeedStyles.deadlinePill(getAnnouncementDeadlineInfo(announcementDetail).expired, announcementDetail.urgencyLevel)}>
+                  {getAnnouncementDeadlineInfo(announcementDetail).label}
+                </span>
+                <span style={announcementFeedStyles.typeBadge}>{announcementDetail.status || 'published'}</span>
               </div>
 
               <div style={navStyles.modalContent}>{announcementDetail.content}</div>
@@ -1880,6 +1906,129 @@ function StudentDashboard() {
         </section>
 
         <MissionMap />
+
+        <section style={announcementFeedStyles.shell}>
+          <div style={glassCard()}>
+            <SectionTitle icon="📢" label="Announcements Feed" action={`${studentAnnouncements.length} active`} />
+            <div style={announcementFeedStyles.filterBar}>
+              {[
+                { key: 'latest', label: 'Latest' },
+                { key: 'pinned', label: 'Pinned' },
+                { key: 'active', label: 'Active' },
+                { key: 'urgency', label: 'Urgency' },
+              ].map(item => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setAnnouncementSort(item.key)}
+                  style={{
+                    ...taskStyles.filterTab,
+                    ...(announcementSort === item.key ? taskStyles.filterTabActive : {}),
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+              <div style={{ flex: 1 }} />
+              {[
+                { key: 'all', label: 'All Students' },
+                { key: 'department', label: 'Department-specific' },
+                { key: 'internship', label: 'Internship Students' },
+                { key: 'final', label: 'Final Year' },
+                { key: 'batch', label: 'Selected Batch' },
+              ].map(item => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setAnnouncementAudienceFilter(item.key === 'all' ? 'all' : item.label)}
+                  style={{
+                    ...taskStyles.filterTab,
+                    ...(announcementAudienceFilter === (item.key === 'all' ? 'all' : item.label) ? taskStyles.filterTabActive : {}),
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {studentAnnouncements.length === 0 ? (
+              <div style={taskStyles.emptyState}>
+                No active announcements yet.
+              </div>
+            ) : (
+              <div style={announcementFeedStyles.grid}>
+                {studentAnnouncements.slice(0, 6).map(announcement => {
+                  const unread = !readAnnouncementIds.includes(announcement.id);
+                  const deadlineInfo = getAnnouncementDeadlineInfo(announcement);
+                  const attachmentUrl = announcement.attachmentUrl || announcement.links?.[0]?.url || '';
+                  return (
+                    <div
+                      key={announcement.id}
+                      onClick={() => openAnnouncement(announcement)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          openAnnouncement(announcement);
+                        }
+                      }}
+                      style={{
+                        ...announcementFeedStyles.card,
+                        ...(announcement.pinned ? announcementFeedStyles.cardPinned : {}),
+                        ...(unread ? announcementFeedStyles.cardUnread : {}),
+                      }}
+                    >
+                      <div style={announcementFeedStyles.cardTop}>
+                        <div style={announcementFeedStyles.cardHeader}>
+                          <div style={announcementFeedStyles.cardTitleWrap}>
+                            <div style={announcementFeedStyles.cardMetaRow}>
+                              <span style={announcementFeedStyles.urgencyBadge(announcement.urgencyLevel)}>
+                                {announcement.urgencyLevel || 'Medium'}
+                              </span>
+                              <span style={announcementFeedStyles.typeBadge}>{announcement.type || announcement.category}</span>
+                              {announcement.pinned && <span style={announcementFeedStyles.pinnedIcon}>📌</span>}
+                              <span style={announcementFeedStyles.readDot(unread)} />
+                            </div>
+                            <div style={{ ...announcementFeedStyles.cardTitle, ...(unread ? announcementFeedStyles.cardTitleUnread : {}) }}>
+                              {announcement.title}
+                            </div>
+                            <div style={announcementFeedStyles.cardPreview}>{announcement.preview}</div>
+                          </div>
+                        </div>
+                        <div style={announcementFeedStyles.cardMetaCol}>
+                          <span style={announcementFeedStyles.deadlinePill(deadlineInfo.expired, announcement.urgencyLevel)}>
+                            {deadlineInfo.label}
+                          </span>
+                          <span style={announcementFeedStyles.timeStamp}>{formatAnnouncementTime(announcement.dateTime)}</span>
+                        </div>
+                      </div>
+
+                      <div style={announcementFeedStyles.cardBottom}>
+                        <span style={announcementFeedStyles.categoryPill}>{announcement.targetAudience || 'All Students'}</span>
+                        <span style={announcementFeedStyles.adminPill}>{announcement.postedBy || 'Admin Team'}</span>
+                        {attachmentUrl ? (
+                          <button
+                            type="button"
+                            onClick={event => {
+                              event.stopPropagation();
+                              window.open(attachmentUrl, '_blank', 'noreferrer');
+                            }}
+                            style={announcementFeedStyles.attachmentBtn}
+                          >
+                            Attachment →
+                          </button>
+                        ) : (
+                          <span style={announcementFeedStyles.noAttachment}>No attachment</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
 
         <section style={featureTilesStyles.grid}>
           <button type="button" onClick={() => navigate('/community-hub')} style={{ ...featureTilesStyles.tile, ...featureTilesStyles.tileCommunity }}>
@@ -2451,6 +2600,221 @@ const featureTilesStyles = {
     borderRadius: 14,
     background: 'linear-gradient(135deg, rgba(124,111,247,0.18), rgba(59,130,246,0.16))',
     border: '1px solid rgba(124,111,247,0.22)',
+  },
+};
+
+const announcementFeedStyles = {
+  shell: {
+    marginTop: 2,
+  },
+  filterBar: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+    alignItems: 'center',
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: 14,
+  },
+  card: {
+    width: '100%',
+    textAlign: 'left',
+    borderRadius: 18,
+    padding: '16px 16px 14px',
+    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.028))',
+    boxShadow: '0 10px 28px rgba(0,0,0,0.22)',
+    display: 'grid',
+    gap: 12,
+    cursor: 'pointer',
+  },
+  cardPinned: {
+    borderColor: 'rgba(251,191,36,0.22)',
+    boxShadow: '0 10px 28px rgba(0,0,0,0.22), 0 0 24px rgba(251,191,36,0.08)',
+  },
+  cardUnread: {
+    background: 'linear-gradient(135deg, rgba(124,111,247,0.14), rgba(59,130,246,0.08))',
+    borderColor: 'rgba(124,111,247,0.28)',
+  },
+  cardTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  cardHeader: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'flex-start',
+    flex: 1,
+    minWidth: 0,
+  },
+  cardTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  cardMetaRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+  },
+  urgencyBadge: level => ({
+    padding: '5px 9px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 800,
+    border:
+      level === 'Critical'
+        ? '1px solid rgba(239,68,68,0.28)'
+        : level === 'High'
+          ? '1px solid rgba(249,115,22,0.24)'
+          : level === 'Medium'
+            ? '1px solid rgba(251,191,36,0.22)'
+            : '1px solid rgba(148,163,184,0.18)',
+    background:
+      level === 'Critical'
+        ? 'rgba(239,68,68,0.16)'
+        : level === 'High'
+          ? 'rgba(249,115,22,0.14)'
+          : level === 'Medium'
+            ? 'rgba(251,191,36,0.14)'
+            : 'rgba(148,163,184,0.12)',
+    color:
+      level === 'Critical'
+        ? '#fecaca'
+        : level === 'High'
+          ? '#fed7aa'
+          : level === 'Medium'
+            ? '#fde68a'
+            : '#cbd5e1',
+  }),
+  typeBadge: {
+    padding: '5px 9px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 800,
+    background: 'rgba(56,189,248,0.12)',
+    border: '1px solid rgba(56,189,248,0.18)',
+    color: '#dbeafe',
+  },
+  pinnedIcon: {
+    fontSize: 14,
+    color: '#fde68a',
+  },
+  readDot: unread => ({
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: unread ? '#7c6ff7' : 'rgba(148,163,184,0.55)',
+    boxShadow: unread ? '0 0 0 6px rgba(124,111,247,0.08)' : 'none',
+  }),
+  cardTitle: {
+    color: '#f8fafc',
+    fontSize: 16,
+    fontWeight: 800,
+    lineHeight: 1.25,
+  },
+  cardTitleUnread: {
+    textShadow: '0 0 16px rgba(255,255,255,0.08)',
+  },
+  cardPreview: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    lineHeight: 1.5,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  },
+  cardMetaCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
+    flexShrink: 0,
+  },
+  deadlinePill: (expired, level) => ({
+    padding: '5px 9px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 800,
+    border:
+      expired
+        ? '1px solid rgba(239,68,68,0.24)'
+        : level === 'Critical'
+          ? '1px solid rgba(239,68,68,0.22)'
+          : level === 'High'
+            ? '1px solid rgba(249,115,22,0.22)'
+            : '1px solid rgba(124,111,247,0.18)',
+    background:
+      expired
+        ? 'rgba(239,68,68,0.12)'
+        : level === 'Critical'
+          ? 'rgba(239,68,68,0.12)'
+          : level === 'High'
+            ? 'rgba(249,115,22,0.12)'
+            : 'rgba(124,111,247,0.12)',
+    color:
+      expired
+        ? '#fecaca'
+        : level === 'Critical'
+          ? '#fecaca'
+          : level === 'High'
+            ? '#fed7aa'
+            : '#ddd6fe',
+  }),
+  timeStamp: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+  cardBottom: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  categoryPill: {
+    padding: '5px 9px',
+    borderRadius: 999,
+    background: 'rgba(124,111,247,0.12)',
+    border: '1px solid rgba(124,111,247,0.18)',
+    color: '#e9d5ff',
+    fontSize: 11,
+    fontWeight: 800,
+  },
+  adminPill: {
+    padding: '5px 9px',
+    borderRadius: 999,
+    background: 'rgba(34,197,94,0.12)',
+    border: '1px solid rgba(34,197,94,0.18)',
+    color: '#bbf7d0',
+    fontSize: 11,
+    fontWeight: 800,
+  },
+  attachmentBtn: {
+    marginLeft: 'auto',
+    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'rgba(255,255,255,0.04)',
+    color: '#eef0f6',
+    borderRadius: 14,
+    padding: '8px 12px',
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  noAttachment: {
+    marginLeft: 'auto',
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: 700,
   },
 };
 

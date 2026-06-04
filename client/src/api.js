@@ -5,6 +5,41 @@ export async function fetchFaq() {
   return res.json();
 }
 
+export async function fetchAnnouncements(query = {}) {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') params.set(key, value);
+  });
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${API_BASE}/api/announcements${suffix}`);
+  return res.json();
+}
+
+export async function publishAnnouncement(payload) {
+  const res = await fetch(`${API_BASE}/api/announcements`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function updateAnnouncement(id, payload) {
+  const res = await fetch(`${API_BASE}/api/announcements/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function removeAnnouncement(id) {
+  const res = await fetch(`${API_BASE}/api/announcements/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  return res.json();
+}
+
 export async function fetchDoubts(role = 'intern') {
   const res = await fetch(`${API_BASE}/api/doubts?role=${encodeURIComponent(role)}`);
   return res.json();

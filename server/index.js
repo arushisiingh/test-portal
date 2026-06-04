@@ -10,6 +10,7 @@ app.use(express.json());
 
 let posts = [...doubtPosts];
 const ANNOUNCEMENT_STATE_FILE = path.join(__dirname, 'announcement-read-state.json');
+const ANNOUNCEMENT_STORE_FILE = path.join(__dirname, 'announcement-store.json');
 const TEAM_STATE_FILE = path.join(__dirname, 'team-store.json');
 
 function readJsonFile(filePath, fallback) {
@@ -32,6 +33,32 @@ function writeJsonFile(filePath, value) {
 }
 
 let announcementReadState = readJsonFile(ANNOUNCEMENT_STATE_FILE, {});
+let announcementStore = readJsonFile(ANNOUNCEMENT_STORE_FILE, [
+  {
+    id: 'ann-zoom-meeting',
+    title: 'Zoom Meeting Tomorrow',
+    preview: 'Meeting starts at 10:00 AM IST. Join the orientation session on time.',
+    content: 'The internship orientation meeting will be conducted tomorrow at 10:00 AM IST.\n\nZoom Link: https://zoom.us/j/123456789\nMeeting ID: 123456789\n\nPlease keep your camera ready and join 5 minutes early.',
+    postedBy: 'Samagama Admin Team',
+    dateTime: '2026-06-01T08:30:00.000Z',
+    createdAt: '2026-06-01T08:30:00.000Z',
+    updatedAt: '2026-06-01T08:30:00.000Z',
+    createdBy: 'Samagama Admin Team',
+    category: 'Meeting',
+    type: 'Meeting',
+    urgencyLevel: 'High',
+    priority: 'High',
+    targetAudience: 'All Students',
+    deadline: '2026-06-02',
+    attachmentUrl: 'https://zoom.us/j/123456789',
+    attachmentName: 'Zoom Link',
+    pinned: true,
+    isPinned: true,
+    status: 'published',
+    archived: false,
+    links: [{ label: 'Zoom Link', url: 'https://zoom.us/j/123456789' }],
+  },
+]);
 let teamStore = readJsonFile(TEAM_STATE_FILE, {
   teams: [],
   teamMembers: [],
@@ -47,12 +74,76 @@ function saveTeamStore() {
   writeJsonFile(TEAM_STATE_FILE, teamStore);
 }
 
+function saveAnnouncementStore() {
+  writeJsonFile(ANNOUNCEMENT_STORE_FILE, announcementStore);
+}
+
 function normalizeIdentity(value) {
   return String(value || '').trim().toLowerCase();
 }
 
 function isTeamActiveStatus(status) {
   return ['draft', 'pending', 'active', 'completed'].includes(status);
+}
+
+function normalizeAnnouncementRecord(item = {}) {
+  const now = new Date().toISOString();
+  const deadline = item.deadline ? String(item.deadline).slice(0, 10) : '';
+  const publishAt = item.publishAt || '';
+  const isScheduled = Boolean(publishAt && !Number.isNaN(new Date(publishAt).getTime()) && new Date() < new Date(publishAt));
+  const status = item.status === 'draft'
+    ? 'draft'
+    : item.archived || item.status === 'expired'
+      ? 'expired'
+      : item.status === 'scheduled' || isScheduled
+        ? 'scheduled'
+        : (item.status || 'published');
+  return {
+    id: item.id || `ann-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: String(item.title || '').trim(),
+    preview: String(item.preview || item.message || item.content || '').trim().replace(/\s+/g, ' ').slice(0, 110),
+    content: String(item.content || item.message || '').trim(),
+    postedBy: item.postedBy || 'Samagama Admin Team',
+    dateTime: item.dateTime || item.createdAt || now,
+    createdAt: item.createdAt || item.dateTime || now,
+    updatedAt: item.updatedAt || now,
+    createdBy: item.createdBy || item.postedBy || 'Samagama Admin Team',
+    category: item.category || item.type || 'Announcement',
+    type: item.type || item.category || 'General',
+    urgencyLevel: item.urgencyLevel || item.priority || 'Medium',
+    priority: item.priority || item.urgencyLevel || 'Medium',
+    deadline,
+    targetAudience: item.targetAudience || 'All Students',
+    attachmentUrl: item.attachmentUrl || item.attachmentLink || '',
+    publishAt,
+    attachmentName: item.attachmentName || item.attachmentLabel || 'Attachment',
+    attachmentType: item.attachmentType || '',
+    attachmentFileName: item.attachmentFileName || '',
+    attachmentMimeType: item.attachmentMimeType || '',
+    attachmentData: item.attachmentData || '',
+    pinned: Boolean(item.pinned || item.isPinned),
+    isPinned: Boolean(item.pinned || item.isPinned),
+    status,
+    archived: Boolean(item.archived || item.status === 'expired'),
+    links: Array.isArray(item.links) ? item.links : item.attachmentUrl ? [{ label: item.attachmentName || item.attachmentLabel || 'Attachment', url: item.attachmentUrl }] : [],
+  };
+}
+
+function sortAnnouncementRecords(records = []) {
+  const urgencyOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+  return [...records].sort((a, b) => {
+    const aPinned = Boolean(a.pinned || a.isPinned);
+    const bPinned = Boolean(b.pinned || b.isPinned);
+    if (aPinned !== bPinned) return aPinned ? -1 : 1;
+    const urgencyDiff = (urgencyOrder[a.urgencyLevel] ?? 9) - (urgencyOrder[b.urgencyLevel] ?? 9);
+    if (urgencyDiff !== 0) return urgencyDiff;
+    return new Date(b.dateTime || b.createdAt || 0) - new Date(a.dateTime || a.createdAt || 0);
+  });
+}
+
+function persistAnnouncementStore(records) {
+  announcementStore = sortAnnouncementRecords(records.map(normalizeAnnouncementRecord));
+  saveAnnouncementStore();
 }
 
 function buildTeamView(team) {
@@ -207,6 +298,80 @@ function respondInviteRecord(inviteId, action) {
 
 app.get('/api/faq', (req, res) => {
   res.json(faqData);
+});
+
+app.get('/api/announcements', (req, res) => {
+  const audience = String(req.query.audience || 'All Students').trim();
+  const status = String(req.query.status || '').trim();
+  const urgency = String(req.query.urgency || '').trim();
+  const pinned = String(req.query.pinned || '').trim();
+  const q = String(req.query.q || '').trim().toLowerCase();
+
+  let next = sortAnnouncementRecords(announcementStore).filter(item => !item.archived || status === 'all');
+  if (status && status !== 'all') {
+    next = next.filter(item => item.status === status);
+  }
+  if (audience && audience !== 'All Students') {
+    next = next.filter(item => item.targetAudience === 'All Students' || item.targetAudience === audience);
+  }
+  if (urgency) {
+    next = next.filter(item => item.urgencyLevel === urgency);
+  }
+  if (pinned === 'true') {
+    next = next.filter(item => item.pinned || item.isPinned);
+  }
+  if (q) {
+    next = next.filter(item => [
+      item.title,
+      item.content,
+      item.preview,
+      item.category,
+      item.type,
+      item.targetAudience,
+      item.urgencyLevel,
+    ].filter(Boolean).join(' ').toLowerCase().includes(q));
+  }
+  res.json(next);
+});
+
+app.put('/api/announcements', (req, res) => {
+  const announcements = Array.isArray(req.body.announcements) ? req.body.announcements : [];
+  persistAnnouncementStore(announcements);
+  res.json(announcementStore);
+});
+
+app.post('/api/announcements', (req, res) => {
+  const announcement = normalizeAnnouncementRecord(req.body || {});
+  announcementStore.unshift(announcement);
+  saveAnnouncementStore();
+  res.status(201).json(announcement);
+});
+
+app.patch('/api/announcements/:id', (req, res) => {
+  const id = String(req.params.id || '').trim();
+  const index = announcementStore.findIndex(item => item.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: 'Announcement not found' });
+  }
+  announcementStore[index] = normalizeAnnouncementRecord({
+    ...announcementStore[index],
+    ...req.body,
+    id,
+    updatedAt: new Date().toISOString(),
+  });
+  saveAnnouncementStore();
+  res.json(announcementStore[index]);
+});
+
+app.delete('/api/announcements/:id', (req, res) => {
+  const id = String(req.params.id || '').trim();
+  const before = announcementStore.length;
+  announcementStore = announcementStore.filter(item => item.id !== id);
+  if (announcementStore.length === before) {
+    return res.status(404).json({ error: 'Announcement not found' });
+  }
+  saveAnnouncementStore();
+  res.json({ ok: true });
 });
 
 app.get('/api/doubts', (req, res) => {

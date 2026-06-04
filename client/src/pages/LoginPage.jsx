@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 const ROLES = [
   { id: 'student', label: 'Student Login', desc: 'Access your dashboard, tasks & SP Points' },
-  { id: 'admin',   label: 'Admin Login',   desc: 'Manage students, applications & moderation' },
+  { id: 'admin', label: 'Admin Login', desc: 'Manage students, applications & moderation' },
 ];
 
 function LoginPage({ onLogin }) {
@@ -16,15 +16,17 @@ function LoginPage({ onLogin }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
-    if (!email || !password) { setError('Please fill in all fields'); return; }
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800)); // simulate network
+    await new Promise(r => setTimeout(r, 800));
     onLogin(selectedRole, email);
   }
 
   return (
     <div style={styles.page}>
-      {/* Background orbs */}
       <div style={styles.orb1} />
       <div style={styles.orb2} />
 
@@ -37,7 +39,6 @@ function LoginPage({ onLogin }) {
           </div>
         </div>
 
-        {/* Role selector */}
         <div style={styles.roleGrid}>
           {ROLES.map(r => (
             <button
@@ -52,7 +53,6 @@ function LoginPage({ onLogin }) {
           ))}
         </div>
 
-        {/* Login form */}
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
             <label style={styles.label}>Email Address</label>
@@ -172,7 +172,7 @@ const styles = {
     boxShadow: '0 0 20px rgba(124,111,247,0.15)',
   },
   roleLabel: { fontSize: 13, fontWeight: 700, display: 'block' },
-  roleDesc:   { fontSize: 11, opacity: 0.7, display: 'block' },
+  roleDesc: { fontSize: 11, opacity: 0.7, display: 'block' },
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
   field: { display: 'flex', flexDirection: 'column', gap: 6 },
   label: { fontSize: 12, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em' },
