@@ -2,16 +2,30 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AuthContext from '../authContext';
 import {
-  createAnnouncement,
   formatAnnouncementTime,
   getAnnouncementCategoryIcon,
-  getAnnouncements,
-  getPinnedAnnouncement,
-  setAnnouncementPinned,
 } from '../announcements';
-import { createInternshipTask, getInternshipTasks, getTaskSummary } from '../internshipTasks';
-import { getJourneyMilestone, getJourneyPendingReviews, issueJourneyOfferLetter, reviewJourneySubmission } from '../internshipJourney';
-import { decideAdminTeam, fetchAdminTeams } from '../api';
+import { getJourneyMilestone } from '../internshipJourney';
+import {
+  createTask,
+  decideAdminTeam,
+  fetchAdminTeams,
+  fetchAnnouncements,
+  fetchNocs,
+  fetchPendingReviews,
+  fetchReviews,
+  fetchSpurtiPoints,
+  fetchAllStudents,
+  publishAnnouncement,
+  removeAnnouncement,
+  updateAnnouncement,
+  reviewSubmission,
+  fetchKnowledgeBase,
+  createKnowledgeBase,
+  updateKnowledgeBase,
+  archiveKnowledgeBase,
+  deleteKnowledgeBase,
+} from '../api';
 
 /* ── Shared glass helpers (matching StudentDashboard) ──────────────────────────── */
 function glassCard(style = {}) {
@@ -156,7 +170,7 @@ export default function AdminDashboard() {
   const notificationMenuRef = useRef(null);
   const notificationButtonRef = useRef(null);
   const loginTimestampRef = useRef(new Date());
-  const [announcementItems, setAnnouncementItems] = useState(() => getAnnouncements());
+  const [announcementItems, setAnnouncementItems] = useState([]);
   const [announcementDraft, setAnnouncementDraft] = useState({
     title: '',
     message: '',
@@ -168,8 +182,8 @@ export default function AdminDashboard() {
   });
   const [announcementMessage, setAnnouncementMessage] = useState('');
   const [pinConflict, setPinConflict] = useState(null);
-  const [taskItems, setTaskItems] = useState(() => getInternshipTasks());
-  const [journeyReviews, setJourneyReviews] = useState(() => getJourneyPendingReviews());
+  const [taskItems, setTaskItems] = useState([]);
+  const [journeyReviews, setJourneyReviews] = useState([]);
   const [offerLetterMessage, setOfferLetterMessage] = useState('');
   const [teamItems, setTeamItems] = useState([]);
   const [teamMessage, setTeamMessage] = useState('');
@@ -216,6 +230,14 @@ export default function AdminDashboard() {
     { id: 1, student: 'Neha Gupta', submitted: '2024-05-15', status: 'pending' },
     { id: 2, student: 'Vikram Kumar', submitted: '2024-05-14', status: 'verified' },
   ]);
+  const [kbItems, setKbItems] = useState([]);
+  const [kbSearch, setKbSearch] = useState('');
+  const [kbCategory, setKbCategory] = useState('All');
+  const [kbDialog, setKbDialog] = useState(null); // null | 'create' | 'edit'
+  const [kbDraft, setKbDraft] = useState({ question: '', answer: '', category: '', tags: '', priority: 'medium' });
+  const [kbLoading, setKbLoading] = useState(false);
+  const [kbDeleteTarget, setKbDeleteTarget] = useState(null);
+
   const taskSummary = getTaskSummary(taskItems);
   const offerLetterMilestone = getJourneyMilestone(6);
   const leaderboardStudents = useMemo(
@@ -306,7 +328,7 @@ export default function AdminDashboard() {
   const sortedAnnouncements = useMemo(
     () => [...announcementItems].sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return new Date(b.dateTime) - new Date(a.dateTime);
+      return new Date(b.createdAt || b.dateTime || 0) - new Date(a.createdAt || a.dateTime || 0);
     }),
     [announcementItems],
   );
@@ -336,12 +358,12 @@ export default function AdminDashboard() {
     }));
 
     const announcementPanelItems = sortedAnnouncements.slice(0, 4).map(announcement => ({
-      id: announcement.id,
+      id: announcement._id || announcement.id,
       icon: getAnnouncementCategoryIcon(announcement.category),
       category: announcement.category,
       title: announcement.title,
-      preview: announcement.preview,
-      meta: formatAnnouncementTime(announcement.dateTime),
+      preview: (announcement.body || '').slice(0, 80),
+      meta: formatAnnouncementTime(announcement.createdAt || announcement.dateTime),
       pinned: announcement.pinned,
       onClick: () => setActiveSection('overview'),
     }));
@@ -409,92 +431,94 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    function syncAnnouncements() {
-      setAnnouncementItems(getAnnouncements());
+    async function syncAnnouncements() {
+      try {
+        const data = await fetchAnnouncements();
+        setAnnouncementItems(Array.isArray(data) ? data : []);
+      } catch { setAnnouncementItems([]); }
     }
 
-    function syncTasks() {
-      setTaskItems(getInternshipTasks());
+    async function syncTasks() {
+      try {
+        const data = await fetchTasks();
+        setTaskItems(Array.isArray(data) ? data : []);
+      } catch { setTaskItems([]); }
     }
 
-    function syncJourney() {
-      setJourneyReviews(getJourneyPendingReviews());
+    async function syncJourney() {
+      try {
+        const data = await fetchPendingReviews();
+        setJourneyReviews(Array.isArray(data) ? data : []);
+      } catch { setJourneyReviews([]); }
     }
 
     async function syncTeams() {
       try {
         const data = await fetchAdminTeams();
         setTeamItems(Array.isArray(data) ? data : []);
-      } catch {
-        setTeamItems([]);
-      }
+      } catch { setTeamItems([]); }
     }
+
+    async function syncKnowledgeBase() {
+      try {
+        const data = await fetchKnowledgeBase({ limit: 50 });
+        setKbItems(Array.isArray(data.items) ? data.items : Array.isArray(data) ? data : []);
+      } catch { setKbItems([]); }
+    }
+
+    syncAnnouncements();
+    syncTasks();
+    syncJourney();
+    syncTeams();
+    syncKnowledgeBase();
 
     window.addEventListener('samagama-announcements-updated', syncAnnouncements);
     window.addEventListener('samagama-tasks-updated', syncTasks);
     window.addEventListener('samagama-journey-updated', syncJourney);
     window.addEventListener('samagama-teams-updated', syncTeams);
-    window.addEventListener('storage', syncAnnouncements);
-    window.addEventListener('storage', syncTasks);
-    window.addEventListener('storage', syncJourney);
-    window.addEventListener('storage', syncTeams);
-    syncTeams();
     const teamInterval = window.setInterval(syncTeams, 20000);
     return () => {
       window.removeEventListener('samagama-announcements-updated', syncAnnouncements);
       window.removeEventListener('samagama-tasks-updated', syncTasks);
       window.removeEventListener('samagama-journey-updated', syncJourney);
       window.removeEventListener('samagama-teams-updated', syncTeams);
-      window.removeEventListener('storage', syncAnnouncements);
-      window.removeEventListener('storage', syncTasks);
-      window.removeEventListener('storage', syncJourney);
-      window.removeEventListener('storage', syncTeams);
       window.clearInterval(teamInterval);
     };
   }, []);
 
-  function refreshAnnouncementItems() {
-    setAnnouncementItems(getAnnouncements());
+  async function refreshAnnouncementItems() {
+    try {
+      const data = await fetchAnnouncements();
+      setAnnouncementItems(Array.isArray(data) ? data : []);
+    } catch { setAnnouncementItems([]); }
   }
 
-  function handlePublishAnnouncement(event) {
+  async function handlePublishAnnouncement(event) {
     event.preventDefault();
     if (!announcementDraft.title.trim() || !announcementDraft.message.trim()) return;
 
-    const existingPinned = getPinnedAnnouncement(getAnnouncements());
-    if (announcementDraft.pinned && existingPinned) {
-      setPinConflict({
-        mode: 'publish',
-        existingPinned,
-        draft: { ...announcementDraft },
-      });
+    const existing = announcementItems.find(a => a.pinned);
+    if (announcementDraft.pinned && existing) {
+      setPinConflict({ mode: 'publish', existingPinned: existing, draft: { ...announcementDraft } });
       return;
     }
 
-    const next = createAnnouncement({
-      title: announcementDraft.title,
-      message: announcementDraft.message,
-      category: announcementDraft.category,
-      priority: announcementDraft.priority,
-      attachmentLink: announcementDraft.attachmentLink,
-      attachmentLabel: announcementDraft.attachmentLabel,
-      pinned: announcementDraft.pinned,
-      replacePinned: announcementDraft.pinned,
-      postedBy: 'Samagama Admin Team',
-    });
-
-    setAnnouncementItems(next);
-    setAnnouncementDraft({
-      title: '',
-      message: '',
-      category: 'Announcement',
-      priority: 'Medium',
-      attachmentLink: '',
-      attachmentLabel: 'Attachment',
-      pinned: true,
-    });
-    setAnnouncementMessage('Announcement published successfully.');
-    setTimeout(() => setAnnouncementMessage(''), 1800);
+    try {
+      await publishAnnouncement({
+        title: announcementDraft.title,
+        body: announcementDraft.message,
+        category: announcementDraft.category,
+        priority: announcementDraft.priority,
+        pinned: announcementDraft.pinned,
+        links: announcementDraft.attachmentLink
+          ? [{ label: announcementDraft.attachmentLabel || 'Attachment', url: announcementDraft.attachmentLink }]
+          : [],
+      });
+      await refreshAnnouncementItems();
+      setAnnouncementDraft({ title: '', message: '', category: 'Announcement', priority: 'Medium', attachmentLink: '', attachmentLabel: 'Attachment', pinned: true });
+      setAnnouncementMessage('Announcement published successfully.');
+      setTimeout(() => setAnnouncementMessage(''), 1800);
+    } catch { setAnnouncementMessage('Failed to publish. Please try again.'); }
   }
 
   function resetAnnouncementDraft() {
@@ -509,33 +533,41 @@ export default function AdminDashboard() {
     });
   }
 
-  function finalizePublishAnnouncement({ replacePinned = false } = {}) {
-    const next = createAnnouncement({
-      title: announcementDraft.title,
-      message: announcementDraft.message,
-      category: announcementDraft.category,
-      priority: announcementDraft.priority,
-      attachmentLink: announcementDraft.attachmentLink,
-      attachmentLabel: announcementDraft.attachmentLabel,
-      pinned: announcementDraft.pinned,
-      replacePinned,
-      postedBy: 'Samagama Admin Team',
-    });
-
-    setAnnouncementItems(next);
-    resetAnnouncementDraft();
-    setAnnouncementMessage('Announcement published successfully.');
-    setTimeout(() => setAnnouncementMessage(''), 1800);
+  async function finalizePublishAnnouncement({ replacePinned = false } = {}) {
+    try {
+      if (replacePinned) {
+        const old = announcementItems.find(a => a.pinned);
+        if (old?._id) await updateAnnouncement(old._id, { pinned: false });
+      }
+      await publishAnnouncement({
+        title: announcementDraft.title,
+        body: announcementDraft.message,
+        category: announcementDraft.category,
+        priority: announcementDraft.priority,
+        pinned: announcementDraft.pinned,
+        links: announcementDraft.attachmentLink
+          ? [{ label: announcementDraft.attachmentLabel || 'Attachment', url: announcementDraft.attachmentLink }]
+          : [],
+      });
+      await refreshAnnouncementItems();
+      resetAnnouncementDraft();
+      setAnnouncementMessage('Announcement published successfully.');
+      setTimeout(() => setAnnouncementMessage(''), 1800);
+    } catch { setAnnouncementMessage('Failed to publish. Please try again.'); }
   }
 
-  function handleReplacePinnedAnnouncement() {
+  async function handleReplacePinnedAnnouncement() {
     if (!pinConflict) return;
 
     if (pinConflict.mode === 'publish') {
-      finalizePublishAnnouncement({ replacePinned: true });
+      await finalizePublishAnnouncement({ replacePinned: true });
     } else if (pinConflict.mode === 'toggle') {
-      setAnnouncementPinned(pinConflict.targetId, true, { replacePinned: true });
-      refreshAnnouncementItems();
+      try {
+        const old = announcementItems.find(a => a.pinned);
+        if (old) await updateAnnouncement(old._id || old.id, { pinned: false });
+        await updateAnnouncement(pinConflict.targetId, { pinned: true });
+        await refreshAnnouncementItems();
+      } catch { /* fail silently */ }
     }
 
     setPinConflict(null);
@@ -692,36 +724,34 @@ export default function AdminDashboard() {
     showCommunityToast('Duplicate question merged and locked.');
   }
 
-  function handlePublishTask(event) {
+  async function handlePublishTask(event) {
     event.preventDefault();
     if (!taskDraft.title.trim() || !taskDraft.description.trim() || !taskDraft.deadline) return;
-
-    const next = createInternshipTask({
-      title: taskDraft.title,
-      description: taskDraft.description,
-      category: taskDraft.category,
-      deadline: taskDraft.deadline,
-      priority: taskDraft.priority,
-      attachmentLink: taskDraft.attachmentLink,
-      slots: taskDraft.slots.split(',').map(slot => slot.trim()).filter(Boolean),
-    });
-    setTaskItems(next);
-    setTaskDraft({
-      title: '',
-      description: '',
-      category: 'General',
-      deadline: '',
-      priority: 'Medium',
-      attachmentLink: '',
-      slots: '',
-    });
-    setTaskMessage('Internship task assigned successfully.');
-    setTimeout(() => setTaskMessage(''), 1800);
+    try {
+      await createTask({
+        title: taskDraft.title,
+        description: taskDraft.description,
+        category: taskDraft.category,
+        deadline: taskDraft.deadline,
+        priority: taskDraft.priority,
+        links: taskDraft.attachmentLink ? [{ label: 'Link', url: taskDraft.attachmentLink }] : [],
+        slots: taskDraft.slots.split(',').map(s => s.trim()).filter(Boolean),
+        phase: 1,
+      });
+      const data = await fetchTasks();
+      setTaskItems(Array.isArray(data) ? data : []);
+      setTaskDraft({ title: '', description: '', category: 'General', deadline: '', priority: 'Medium', attachmentLink: '', slots: '' });
+      setTaskMessage('Internship task assigned successfully.');
+      setTimeout(() => setTaskMessage(''), 1800);
+    } catch { setTaskMessage('Failed to create task. Please try again.'); }
   }
 
-  function handleJourneyReview(reviewId, decision) {
-    reviewJourneySubmission(reviewId, decision, decision === 'approved' ? 'Approved by admin moderation.' : 'Please revise and resubmit.');
-    setJourneyReviews(getJourneyPendingReviews());
+  async function handleJourneyReview(reviewId, decision) {
+    try {
+      await reviewSubmission(reviewId, decision, decision === 'approved' ? 'Approved by admin moderation.' : 'Please revise and resubmit.');
+      const data = await fetchPendingReviews();
+      setJourneyReviews(Array.isArray(data) ? data : []);
+    } catch { /* silently fail */ }
   }
 
   async function handleTeamDecision(teamId, action) {
@@ -2044,15 +2074,15 @@ export default function AdminDashboard() {
               ) : (
                 <div style={styles.announcementDialogBody}>
                   {[...announcementItems]
-                    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || new Date(b.dateTime) - new Date(a.dateTime))
+                    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
                     .map(a => (
-                      <div key={a.id} style={styles.announcementRecentItem}>
+                      <div key={a._id || a.id} style={styles.announcementRecentItem}>
                         <div style={{ minWidth: 0 }}>
                           <div style={styles.announcementRecentTitle}>{a.title}</div>
                           <div style={styles.announcementRecentMeta}>
-                            {getAnnouncementCategoryIcon(a.category)} {a.category} · {new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(a.dateTime))}
+                            {getAnnouncementCategoryIcon(a.category)} {a.category} · {new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(a.createdAt || Date.now()))}
                           </div>
-                          <div style={styles.announcementRecentPreview}>{a.preview}</div>
+                          <div style={styles.announcementRecentPreview}>{(a.body || '').slice(0, 100)}</div>
                         </div>
                         <div style={styles.announcementRecentActions}>
                           {a.pinned && (
@@ -2062,25 +2092,20 @@ export default function AdminDashboard() {
                           )}
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
+                              const targetId = a._id || a.id;
                               if (a.pinned) {
-                                setAnnouncementPinned(a.id, false);
-                                refreshAnnouncementItems();
+                                await updateAnnouncement(targetId, { pinned: false });
+                                await refreshAnnouncementItems();
                                 return;
                               }
-
-                              const currentPinned = getPinnedAnnouncement(getAnnouncements());
-                              if (currentPinned && currentPinned.id !== a.id) {
-                                setPinConflict({
-                                  mode: 'toggle',
-                                  existingPinned: currentPinned,
-                                  targetId: a.id,
-                                });
+                              const currentPinned = announcementItems.find(x => x.pinned && x._id !== targetId && x.id !== targetId);
+                              if (currentPinned) {
+                                setPinConflict({ mode: 'toggle', existingPinned: currentPinned, targetId });
                                 return;
                               }
-
-                              setAnnouncementPinned(a.id, true, { replacePinned: true });
-                              refreshAnnouncementItems();
+                              await updateAnnouncement(targetId, { pinned: true });
+                              await refreshAnnouncementItems();
                             }}
                             style={{
                               ...styles.announcementPinBtn,
@@ -2139,6 +2164,7 @@ export default function AdminDashboard() {
               { id: 'applications', label: 'Applications', icon: '📋' },
               { id: 'teams', label: 'Teams', icon: '🧑‍🤝‍🧑' },
               { id: 'moderation', label: 'Moderation', icon: '🛡️' },
+              { id: 'knowledge-base', label: 'Knowledge Base', icon: '🧠' },
               { id: 'analytics', label: 'Analytics', icon: '📈' },
             ].map(item => (
             <button

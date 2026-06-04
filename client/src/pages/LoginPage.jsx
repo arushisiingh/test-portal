@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { apiLogin } from '../api';
 
 const ROLES = [
   { id: 'student', label: 'Student Login', desc: 'Access your dashboard, tasks & SP Points' },
@@ -21,8 +22,16 @@ function LoginPage({ onLogin }) {
       return;
     }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    onLogin(selectedRole, email);
+    try {
+      const data = await apiLogin(email, password);
+      sessionStorage.setItem('samagama-token', data.token);
+      sessionStorage.setItem('samagama-user-id', data.user._id);
+      onLogin(data.user.role, email, data.user);
+    } catch (err) {
+      setError(err.message || 'Invalid credentials. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

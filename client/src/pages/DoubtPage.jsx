@@ -46,7 +46,7 @@ function DoubtPage({ role, user }) {
 
   async function handleAnswer(id, answerText, reset) {
     if (!answerText.trim()) return;
-    await answerDoubt(id, { user, text: answerText });
+    await answerDoubt(id, { text: answerText });
     reset();
     refresh();
   }
@@ -90,11 +90,11 @@ function DoubtPage({ role, user }) {
         <div className="doubt-feed">
           {posts.map(post => (
             <DoubtCard
-              key={post.id}
+              key={post._id || post.id}
               post={post}
               role={role}
-              onApprove={() => handleApprove(post.id)}
-              onReject={() => handleReject(post.id)}
+              onApprove={() => handleApprove(post._id || post.id)}
+              onReject={() => handleReject(post._id || post.id)}
               onAnswer={handleAnswer}
             />
           ))}
@@ -114,8 +114,8 @@ function DoubtCard({ post, role, onApprove, onReject, onAnswer }) {
         <div>
           <strong>{post.title}</strong>
           <div className="meta-row">
-            <span>{post.user}</span>
-            <span>{post.time}</span>
+            <span>{post.authorName || post.user}</span>
+            <span>{post.createdAt ? new Date(post.createdAt).toLocaleString() : post.time}</span>
             <span className={post.status}>{post.status}</span>
           </div>
         </div>
@@ -137,16 +137,16 @@ function DoubtCard({ post, role, onApprove, onReject, onAnswer }) {
       {showAnswers && (
         <div className="answers-panel">
           {post.answers.length === 0 ? <p>No answers yet.</p> : post.answers.map(answer => (
-            <div key={answer.id} className="answer-item">
-              <strong>{answer.user}</strong>
+            <div key={answer._id || answer.id} className="answer-item">
+              <strong>{answer.userName || answer.user}</strong>
               <p>{answer.text}</p>
-              <small>{answer.time}</small>
+              <small>{answer.createdAt ? new Date(answer.createdAt).toLocaleString() : answer.time}</small>
             </div>
           ))}
           {post.status === 'approved' && (
             <div className="answer-form">
               <textarea value={answerText} onChange={e => setAnswerText(e.target.value)} placeholder="Write your answer" rows="3" />
-              <button className="primary-btn" onClick={() => onAnswer(post.id, answerText, () => setAnswerText(''))}>Submit answer</button>
+              <button className="primary-btn" onClick={() => onAnswer(post._id || post.id, answerText, () => setAnswerText(''))}>Submit answer</button>
             </div>
           )}
         </div>

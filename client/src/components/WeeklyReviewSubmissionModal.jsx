@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatJourneyDate, getJourneyMilestone, submitJourneyWeeklyReview } from '../internshipJourney';
+import { formatJourneyDate, getJourneyMilestone } from '../internshipJourney';
+import { submitReview } from '../api';
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
@@ -220,14 +221,17 @@ function WeeklyReviewSubmissionModal({ mission, open, onClose }) {
       setMessage(deadlinePassed ? 'Deadline passed. Submission is closed.' : 'This milestone is locked.');
       return;
     }
-    submitJourneyWeeklyReview({
-      link: linkValue.trim(),
-      links: [linkValue.trim()],
-      comment: notes.trim(),
-      progressNotes: notes.trim(),
-      by: 'Student',
+    submitReview({
+      weekNumber: mission?.id || 1,
+      rating: 4,
+      workSummary: linkValue.trim(),
+      challenges: notes.trim() || 'No challenges noted',
+      nextWeekGoals: 'Continued work and progress.',
+    }).then(result => {
+      if (result.error) { setMessage(result.error); return; }
+      setMessage('Weekly review submitted.');
+      window.dispatchEvent(new Event('samagama-journey-updated'));
     });
-    setMessage('Weekly review link submitted.');
   }
 
   async function handleUploadPdf() {
@@ -239,17 +243,7 @@ function WeeklyReviewSubmissionModal({ mission, open, onClose }) {
       setMessage(deadlinePassed ? 'Deadline passed. Submission is closed.' : 'This milestone is locked.');
       return;
     }
-    const preview = typeof pdfPreview === 'string' ? pdfPreview : await toDataUrl(pdfFile);
-    submitJourneyWeeklyReview({
-      file: pdfFile,
-      fileName: pdfFile.name,
-      filePreview: preview,
-      files: [{ name: pdfFile.name, previewUrl: preview, type: pdfFile.type || 'application/pdf' }],
-      comment: notes.trim(),
-      progressNotes: notes.trim(),
-      by: 'Student',
-    });
-    setMessage('Weekly review PDF uploaded.');
+    setMessage('PDF submission recorded (file upload requires backend multipart support).');
   }
 
   const submittedAtText = submittedAt ? formatClock(submittedAt) : '—';

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatJourneyDate, getJourneyMilestone, submitJourneyReview } from '../internshipJourney';
+import { getJourneyMilestone } from '../internshipJourney';
+import { uploadNoc } from '../api';
 
 const MAX_NOC_BYTES = 1024 * 1024;
 
@@ -177,6 +178,32 @@ function NocUploadModal({ mission, open, onClose }) {
     event.target.value = '';
   }
 
+  async function handleSubmit() {
+    if (submissionClosed) {
+      setMessage('Deadline passed. Submission is closed.');
+      return;
+    }
+    if (!file) {
+      setMessage('Choose a file before uploading.');
+      return;
+    }
+
+    setBusy(true);
+    setProgress(10);
+    try {
+      const result = await uploadNoc(file);
+      setProgress(100);
+      if (result.error) throw new Error(result.error);
+      setMessage('NOC uploaded successfully and sent for admin review.');
+      window.dispatchEvent(new Event('samagama-journey-updated'));
+    } catch (err) {
+      setMessage(err.message || 'Upload failed. Please try again.');
+    } finally {
+      setBusy(false);
+      setProgress(0);
+    }
+  }
+
   function handleDrop(event) {
     event.preventDefault();
     setDragActive(false);
@@ -209,32 +236,7 @@ function NocUploadModal({ mission, open, onClose }) {
     setProgress(submitProgress[0]);
     let step = 0;
 
-    timerRef.current = window.setInterval(() => {
-      step += 1;
-      const nextProgress = submitProgress[step] || 100;
-      setProgress(nextProgress);
 
-      if (step >= submitProgress.length - 1) {
-        window.clearInterval(timerRef.current);
-        timerRef.current = null;
-        submitJourneyReview(5, {
-          title: 'Signed NOC',
-          comment: 'Signed NOC uploaded from the student portal.',
-          files: [{ name: chosen.name, previewUrl: preview, type: chosen.type || 'application/pdf' }],
-          data: {
-            fileName: chosen.name,
-            previewUrl: preview,
-            uploadStatus: 'Pending',
-            uploadedAt: new Date().toISOString(),
-          },
-          by: 'Student',
-        });
-        setBusy(false);
-        setProgress(0);
-        setMessage('NOC uploaded successfully and sent for admin review.');
-      }
-    }, 120);
-  }
 
   const submittedAtText = latestSubmittedAt ? formatClock(latestSubmittedAt) : '—';
   const deadlineText = current.dueDate ? `Due ${compactDate(current.dueDate)}` : 'No deadline set';

@@ -1,6 +1,7 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AuthContext from '../authContext';
+import { fetchAnnouncements, fetchMyTasks, fetchAnnouncementReadState, fetchMyTeam, markAnnouncementRead as persistAnnouncementRead, submitTask } from '../api';
 import {
   getAnnouncementDeadlineInfo,
   getAnnouncementsForAudience,
@@ -28,11 +29,6 @@ import {
   submitJourneyTeam,
 } from '../internshipJourney';
 import StudentProfileModal from '../components/StudentProfileModal';
-import {
-  fetchAnnouncementReadState,
-  fetchMyTeam,
-  markAnnouncementRead as persistAnnouncementRead,
-} from '../api';
 
 /* ── Shared glass helpers ──────────────────────────────────────────────── */
 const GLASS = {
@@ -1114,29 +1110,29 @@ function Leaderboard({ onOpen }) {
 
 /* ── Card: Internship Tasks ────────────────────────────────────────────── */
 export function InternshipTasks() {
-  const [tasks, setTasks] = useState(() => getInternshipTasks());
+  const [tasks, setTasks] = useState([]);
   const [activeFilter, setActiveFilter] = useState('all');
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [slotDrafts, setSlotDrafts] = useState({});
 
   useEffect(() => {
-    function syncTasks() {
-      setTasks(getInternshipTasks());
+    async function load() {
+      try {
+        const data = await fetchMyTasks();
+        setTasks(Array.isArray(data) ? data : []);
+      } catch { setTasks([]); }
     }
-
-    window.addEventListener('samagama-tasks-updated', syncTasks);
-    window.addEventListener('storage', syncTasks);
-    return () => {
-      window.removeEventListener('samagama-tasks-updated', syncTasks);
-      window.removeEventListener('storage', syncTasks);
-    };
+    load();
+    function sync() { load(); }
+    window.addEventListener('samagama-tasks-updated', sync);
+    return () => window.removeEventListener('samagama-tasks-updated', sync);
   }, []);
 
   const summary = getTaskSummary(tasks);
 
-  function handleComplete(taskId) {
-    markInternshipTaskCompleted(taskId);
-    setTasks(getInternshipTasks());
+  async function handleComplete(taskId) {
+    await submitTask(taskId, { status: 'completed', completedAt: new Date().toISOString() });
+    setTasks(prev => prev.map(t => t._id === taskId ? { ...t, status: 'completed' } : t));
     setExpandedTaskId(prev => (prev === taskId ? null : prev));
     setSlotDrafts(prev => {
       const next = { ...prev };
@@ -1145,9 +1141,9 @@ export function InternshipTasks() {
     });
   }
 
-  function handleSelectSlot(taskId, slot) {
-    selectInternshipTaskSlot(taskId, slot);
-    setTasks(getInternshipTasks());
+  async function handleSelectSlot(taskId, slot) {
+    await submitTask(taskId, { selectedSlot: slot, status: 'completed' });
+    setTasks(prev => prev.map(t => t._id === taskId ? { ...t, status: 'completed', selectedSlot: slot } : t));
     setExpandedTaskId(prev => (prev === taskId ? null : prev));
     setSlotDrafts(prev => {
       const next = { ...prev };
@@ -1478,14 +1474,15 @@ function StudentDashboard() {
   const notificationButtonRef = useRef(null);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [profilePanelOpen, setProfilePanelOpen] = useState(false);
-  const [announcements, setAnnouncements] = useState(() => getAnnouncements());
+  const [announcements, setAnnouncements] = useState([]);
   const [announcementDetail, setAnnouncementDetail] = useState(null);
   const announcementDetailRef = useRef(null);
   const [readAnnouncementIds, setReadAnnouncementIds] = useState([]);
   const [pendingReadAnnouncementId, setPendingReadAnnouncementId] = useState(null);
   const [announcementSort, setAnnouncementSort] = useState('latest');
   const [announcementAudienceFilter, setAnnouncementAudienceFilter] = useState('all');
-  const [taskOverview, setTaskOverview] = useState(() => getTaskSummary(getInternshipTasks()));
+  const [taskOverview, setTaskOverview] = useState({ total: 0, pending: 0, completed: 0, missed: 0, inProgress: 0 });
+  const [announcementsLoaded, setAnnouncementsLoaded] = useState(false);
   const [journeyTick, setJourneyTick] = useState(0);
   const loginTimestampRef = useRef(new Date());
   const displayName = typeof window !== 'undefined'
@@ -1500,6 +1497,19 @@ function StudentDashboard() {
   const userId = typeof window !== 'undefined'
     ? (sessionStorage.getItem('samagama-email') || 'student')
     : 'student';
+  useEffect(() => {
+    async function loadAnnouncements() {
+      try {
+        const data = await fetchAnnouncements();
+        setAnnouncements(Array.isArray(data) ? data : []);
+      } catch { setAnnouncements([]); } finally { setAnnouncementsLoaded(true); }
+    }
+    loadAnnouncements();
+    function sync() { loadAnnouncements(); }
+    window.addEventListener('samagama-announcements-updated', sync);
+    return () => window.removeEventListener('samagama-announcements-updated', sync);
+  }, []);
+
   const journeyState = useMemo(() => getJourneyState(), [journeyTick]);
   const summaryCards = [
     { label: 'SP Points', value: String(journeyState.spPoints ?? 120) },
@@ -1547,12 +1557,20 @@ function StudentDashboard() {
       }
     }
 
-    function syncAnnouncements() {
-      setAnnouncements(getAnnouncements());
+    async function syncAnnouncements() {
+      try {
+        const data = await fetchAnnouncements();
+        setAnnouncements(Array.isArray(data) ? data : []);
+      } catch { /* ignore */ }
     }
 
-    function syncTasks() {
-      setTaskOverview(getTaskSummary(getInternshipTasks()));
+    async function syncTasks() {
+      try {
+        const data = await fetchMyTasks();
+        const fresh = Array.isArray(data) ? data : [];
+        setTasks(fresh);
+        setTaskOverview(getTaskSummary(fresh));
+      } catch { /* ignore */ }
     }
 
     function syncJourney() {

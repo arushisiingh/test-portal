@@ -1,6 +1,8 @@
-import { useContext, useMemo, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
-import AuthContext from '../authContext';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { fetchSpurtiPoints, fetchLeaderboard } from '../api';
+
+const tabs = ['SP Statement', 'Achievements', 'Badges', 'Leaderboard'];
 
 const glass = {
   background: 'linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))',
@@ -10,60 +12,85 @@ const glass = {
   boxShadow: '0 12px 32px rgba(0,0,0,0.28)',
 };
 
-const tabs = ['SP Statement', 'Achievements', 'Badges', 'Leaderboard'];
-
-const statementRows = [
-  { date: '01 Jun', credit: '+10', debit: '', balance: '120', reason: 'Accepted Answer' },
-  { date: '01 Jun', credit: '+5', debit: '', balance: '125', reason: 'Helpful Contribution' },
-  { date: '02 Jun', credit: '', debit: '-2', balance: '123', reason: 'Spam / Duplicate' },
-  { date: '03 Jun', credit: '+15', debit: '', balance: '138', reason: 'FAQ Contribution' },
-  { date: '04 Jun', credit: '+8', debit: '', balance: '146', reason: 'Review Assistance' },
-  { date: '05 Jun', credit: '', debit: '-4', balance: '142', reason: 'Late Response Adjustment' },
-];
-
-const achievements = [
-  { title: 'FAQ Expert', level: 'Earned' },
-  { title: 'Helpful Contributor', level: 'Earned' },
-  { title: 'Top Reviewer', level: 'In progress' },
-  { title: 'Positive Contributor', level: 'Earned' },
-];
-
 const badgeChips = ['FAQ Expert', 'Helpful Contributor', 'Top Reviewer', 'Positive Contributor', 'Community Helper'];
 
-const leaderboardTop = [
-  { rank: '🥇', name: 'Priya Sharma', sp: '4,210' },
-  { rank: '🥈', name: 'Arjun Mehta', sp: '3,870' },
-  { rank: '🥉', name: 'Sneha Reddy', sp: '3,540' },
-];
-
-const leaderboardList = [
-  { rank: 4, name: 'Rahul Verma', sp: '3,220', badge: 'FAQ Expert' },
-  { rank: 5, name: 'Ananya Iyer', sp: '3,105', badge: 'Helpful Contributor' },
-  { rank: 6, name: 'Karan Patel', sp: '2,990', badge: 'Top Reviewer' },
-  { rank: 7, name: 'Meera Nair', sp: '2,870', badge: 'Community Helper' },
-];
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
 
 function SpurtiPointsPage() {
-  const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('SP Statement');
   const [search, setSearch] = useState('');
+  const [spurtiData, setSpurtiData] = useState({ spurtiPoints: 0, rank: null, percentile: null, totalStudents: 0, transactions: [] });
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [spurtiError, setSpurtiError] = useState(false);
 
-  if (user !== 'student') {
-    return <Navigate to="/dashboard" replace />;
-  }
+  const role = sessionStorage.getItem('samagama-role');
+  const displayName = sessionStorage.getItem('samagama-display-name') || 'Student';
+
+  // Redirect non-students
+  useEffect(() => {
+    if (role && role !== 'student') {
+      navigate('/dashboard');
+    }
+  }, [role, navigate]);
+
+  // Fetch SP data on mount
+  useEffect(() => {
+    fetchSpurtiPoints()
+      .then(data => {
+        if (data && typeof data.spurtiPoints === 'number') {
+          setSpurtiData(data);
+        } else {
+          setSpurtiError(true);
+        }
+      })
+      .catch(() => setSpurtiError(true))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Fetch leaderboard when that tab is opened
+  useEffect(() => {
+    if (activeTab !== 'Leaderboard') return;
+    fetchLeaderboard('all')
+      .then(data => {
+        if (Array.isArray(data)) {
+          setLeaderboard(data.slice(0, 10));
+        }
+      })
+      .catch(() => {});
+  }, [activeTab]);
 
   const filteredStatements = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return statementRows;
-    return statementRows.filter(row =>
-      [row.date, row.credit, row.debit, row.balance, row.reason].some(value =>
-        String(value).toLowerCase().includes(query),
-      ),
+    const rows = spurtiData.transactions || [];
+    if (!query) return rows;
+    return rows.filter(row =>
+      [row.reason, row.category, formatDate(row.createdAt)]
+        .some(val => (val || '').toLowerCase().includes(query)),
     );
-  }, [search]);
+  }, [search, spurtiData.transactions]);
 
-  const chartPoints = '50,170 110,145 170,150 230,112 290,124 350,92 410,80 470,110 530,76 590,64 650,54';
+  // Community top 3
+  const top3 = leaderboard.slice(0, 3);
+  const rest = leaderboard.slice(3);
+
+  const stats = [
+    { label: 'Current Rank', value: spurtiData.rank ? `#${spurtiData.rank}` : '—' },
+    { label: 'Need for next rank', value: '—' },
+    { label: 'Need for Top 50', value: '—' },
+  ];
+
+  const comparisonStats = [
+    { label: 'Your SP', value: String(spurtiData.spurtiPoints) },
+    { label: 'Community Avg', value: spurtiData.totalStudents > 0 ? '—' : '—' },
+    { label: 'Top 50 Cutoff', value: '—' },
+    { label: 'Top 10 Cutoff', value: '—' },
+  ];
 
   return (
     <div style={page}>
@@ -78,15 +105,19 @@ function SpurtiPointsPage() {
 
           <div style={heroCenter}>
             <div style={eyebrow}>SPURTI POINTS BANK</div>
-            <h1 style={title}>Student Name</h1>
+            <h1 style={title}>{loading ? 'Loading…' : displayName}</h1>
             <p style={subtitle}>Track every credit, debit, rank change, and achievement in one place.</p>
           </div>
 
           <div style={summaryCard}>
             <span style={summaryLabel}>Current SP Points</span>
-            <strong style={summaryValue}>177</strong>
+            <strong style={summaryValue}>
+              {loading ? '—' : spurtiError ? '!' : spurtiData.spurtiPoints}
+            </strong>
             <span style={summaryLabel}>Current Rank</span>
-            <strong style={summaryValue}>#133</strong>
+            <strong style={summaryValue}>
+              {spurtiData.rank ? `#${spurtiData.rank}` : '—'}
+            </strong>
           </div>
         </header>
 
@@ -94,19 +125,18 @@ function SpurtiPointsPage() {
           <article style={card}>
             <SectionHeading title="Current Standing" />
             <div style={cardStack}>
-              <LineItem label="Current Rank" value="#133" />
-              <LineItem label="Need for next rank" value="2 SP" />
-              <LineItem label="Need for Top 50" value="67 SP" />
+              {stats.map(item => (
+                <LineItem key={item.label} label={item.label} value={item.value} />
+              ))}
             </div>
           </article>
 
           <article style={card}>
             <SectionHeading title="Community Comparison" />
             <div style={pillGrid}>
-              <MiniStat label="Your SP" value="177" />
-              <MiniStat label="Community Avg" value="124" />
-              <MiniStat label="Top 50 Cutoff" value="244" />
-              <MiniStat label="Top 10 Cutoff" value="312" />
+              {comparisonStats.map(item => (
+                <MiniStat key={item.label} label={item.label} value={item.value} />
+              ))}
             </div>
           </article>
 
@@ -114,9 +144,9 @@ function SpurtiPointsPage() {
             <SectionHeading title="Activity Health" />
             <div style={cardStack}>
               <LineItem label="Attendance %" value="98%" />
-              <LineItem label="Questions Answered" value="48" />
-              <LineItem label="Accepted Answers" value="31" />
-              <LineItem label="Helpful Contributions" value="22" />
+              <LineItem label="SP Balance" value={String(spurtiData.spurtiPoints)} />
+              <LineItem label="Community Rank" value={spurtiData.rank ? `#${spurtiData.rank} of ${spurtiData.totalStudents}` : '—'} />
+              <LineItem label="Percentile" value={spurtiData.percentile ? `${spurtiData.percentile}th` : '—'} />
             </div>
           </article>
 
@@ -134,46 +164,22 @@ function SpurtiPointsPage() {
           <article style={{ ...card, flex: '1 1 520px' }}>
             <SectionHeading title="SP Growth Chart" />
             <div style={chartWrap}>
-              <svg viewBox="0 0 700 220" preserveAspectRatio="none" style={chartSvg} aria-hidden="true">
-                <defs>
-                  <linearGradient id="spurtiLine" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#7c6ff7" />
-                    <stop offset="50%" stopColor="#38bdf8" />
-                    <stop offset="100%" stopColor="#22c55e" />
-                  </linearGradient>
-                  <linearGradient id="spurtiFill" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="rgba(124,111,247,0.45)" />
-                    <stop offset="100%" stopColor="rgba(124,111,247,0.02)" />
-                  </linearGradient>
-                </defs>
-                <polyline
-                  points="50,170 110,145 170,150 230,112 290,124 350,92 410,80 470,110 530,76 590,64 650,54 650,200 50,200"
-                  fill="url(#spurtiFill)"
-                  stroke="none"
-                />
-                <polyline
-                  points={chartPoints}
-                  fill="none"
-                  stroke="url(#spurtiLine)"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <div style={chartAxis}>
-                <span>Days</span>
-                <span>Weeks</span>
-                <span>Months</span>
-              </div>
+              {loading ? (
+                <div style={{ textAlign: 'center', color: '#94a3b8', padding: 40 }}>Loading…</div>
+              ) : (
+                <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: '40px 0' }}>
+                  Chart data will appear here once you have SP transactions.
+                </div>
+              )}
             </div>
           </article>
 
           <article style={{ ...card, flex: '1 1 340px' }}>
             <SectionHeading title="What To Do Next" />
             <div style={cardStack}>
-              <ActionLine text="Answer 3 more questions to enter Top 100" />
-              <ActionLine text="Gain 15 SP to unlock FAQ Expert badge" />
-              <ActionLine text="Contribute 5 accepted answers to reach Top 50" />
+              <ActionLine text="Answer questions to earn SP Points" />
+              <ActionLine text="Contribute FAQs to earn bonus SP" />
+              <ActionLine text="Helpful answers get accepted and earn more" />
             </div>
           </article>
         </section>
@@ -184,10 +190,7 @@ function SpurtiPointsPage() {
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              style={{
-                ...tabBtn,
-                ...(activeTab === tab ? tabBtnActive : {}),
-              }}
+              style={{ ...tabBtn, ...(activeTab === tab ? tabBtnActive : {}) }}
             >
               {tab}
             </button>
@@ -195,51 +198,66 @@ function SpurtiPointsPage() {
         </section>
 
         <section style={{ ...card, padding: 20 }}>
-          {activeTab === 'SP Statement' && (
+          {loading ? (
+            <div style={{ textAlign: 'center', color: '#94a3b8', padding: 32 }}>Loading…</div>
+          ) : activeTab === 'SP Statement' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={statementToolbar}>
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search SP statement..."
+                  placeholder="Search SP statement…"
                   style={searchInput}
                 />
-                <div style={statementHint}>Searchable and scrollable bank statement view</div>
+                <div style={statementHint}>
+                  {filteredStatements.length} transaction{filteredStatements.length !== 1 ? 's' : ''}
+                </div>
               </div>
 
-              <div style={tableWrap}>
-                <table style={table}>
-                  <thead>
-                    <tr>
-                      <th style={th}>Date</th>
-                      <th style={th}>Credit</th>
-                      <th style={th}>Debit</th>
-                      <th style={th}>Balance</th>
-                      <th style={th}>Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStatements.map(row => (
-                      <tr key={`${row.date}-${row.reason}`}>
-                        <td>{row.date}</td>
-                        <td style={creditCell}>{row.credit}</td>
-                        <td style={debitCell}>{row.debit}</td>
-                        <td style={balanceCell}>{row.balance}</td>
-                        <td>{row.reason}</td>
+              {filteredStatements.length === 0 ? (
+                <div style={{ color: '#94a3b8', textAlign: 'center', padding: '32px 0' }}>
+                  No SP transactions yet. Start contributing to earn points!
+                </div>
+              ) : (
+                <div style={tableWrap}>
+                  <table style={table}>
+                    <thead>
+                      <tr>
+                        <th style={th}>Date</th>
+                        <th style={th}>Credit</th>
+                        <th style={th}>Debit</th>
+                        <th style={th}>Balance</th>
+                        <th style={th}>Reason</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {filteredStatements.map(row => (
+                        <tr key={row._id || `${row.createdAt}-${row.reason}`}>
+                          <td style={td}>{formatDate(row.createdAt)}</td>
+                          <td style={creditCell}>{row.amount > 0 ? `+${row.amount}` : ''}</td>
+                          <td style={debitCell}>{row.amount < 0 ? `${row.amount}` : ''}</td>
+                          <td style={balanceCell}>{row.balanceAfter ?? '—'}</td>
+                          <td style={td}>{row.reason || row.category || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'Achievements' && (
             <div style={achievementsGrid}>
-              {achievements.map(item => (
+              {[
+                { title: 'FAQ Expert', level: spurtiData.spurtiPoints >= 100 ? 'Earned' : 'Locked' },
+                { title: 'Helpful Contributor', level: spurtiData.spurtiPoints >= 50 ? 'Earned' : 'Locked' },
+                { title: 'Top Reviewer', level: spurtiData.spurtiPoints >= 200 ? 'Earned' : 'Locked' },
+                { title: 'Positive Contributor', level: spurtiData.spurtiPoints >= 25 ? 'Earned' : 'Locked' },
+              ].map(item => (
                 <div key={item.title} style={achievementCard}>
-                  <strong style={{ color: '#eef0f6' }}>{item.title}</strong>
-                  <span style={{ color: '#94a3b8', fontSize: 12 }}>{item.level}</span>
+                  <strong style={{ color: item.level === 'Earned' ? '#eef0f6' : '#64748b' }}>{item.title}</strong>
+                  <span style={{ color: item.level === 'Earned' ? '#22c55e' : '#94a3b8', fontSize: 12 }}>{item.level}</span>
                 </div>
               ))}
             </div>
@@ -256,11 +274,11 @@ function SpurtiPointsPage() {
           {activeTab === 'Leaderboard' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               <div style={topThree}>
-                {leaderboardTop.map(item => (
-                  <div key={item.name} style={topThreeItem}>
-                    <div style={topThreeRank}>{item.rank}</div>
+                {top3.map(item => (
+                  <div key={item._id || item.rank} style={topThreeItem}>
+                    <div style={topThreeRank}>{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : '🥉'}</div>
                     <strong style={{ color: '#eef0f6' }}>{item.name}</strong>
-                    <span style={{ color: '#fbbf24', fontWeight: 800 }}>{item.sp} SP</span>
+                    <span style={{ color: '#fbbf24', fontWeight: 800 }}>{item.totalSp} SP</span>
                   </div>
                 ))}
               </div>
@@ -272,16 +290,14 @@ function SpurtiPointsPage() {
                       <th style={th}>Rank</th>
                       <th style={th}>Name</th>
                       <th style={th}>SP</th>
-                      <th style={th}>Badge</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {leaderboardList.map(item => (
-                      <tr key={item.rank}>
-                        <td>{item.rank}</td>
-                        <td>{item.name}</td>
-                        <td style={{ color: '#fbbf24', fontWeight: 700 }}>{item.sp}</td>
-                        <td>{item.badge}</td>
+                    {rest.map(item => (
+                      <tr key={item._id || item.rank}>
+                        <td style={td}>{item.rank}</td>
+                        <td style={td}>{item.name}</td>
+                        <td style={{ ...td, color: '#fbbf24', fontWeight: 700 }}>{item.totalSp}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -293,8 +309,12 @@ function SpurtiPointsPage() {
 
         <section style={stickyRankCard}>
           <div>
-            <div style={stickyRankLabel}>Your SP Points: <strong style={{ color: '#f8fafc' }}>177</strong></div>
-            <div style={stickyRankLabel}>Your Rank: <strong style={{ color: '#f8fafc' }}>#133</strong></div>
+            <div style={stickyRankLabel}>
+              Your SP Points: <strong style={{ color: '#f8fafc' }}>{spurtiData.spurtiPoints}</strong>
+            </div>
+            <div style={stickyRankLabel}>
+              Your Rank: <strong style={{ color: '#f8fafc' }}>{spurtiData.rank ? `#${spurtiData.rank}` : '—'}</strong>
+            </div>
           </div>
           <div style={stickyRankText}>Keep contributing to climb the leaderboard.</div>
         </section>
@@ -532,39 +552,6 @@ const chartWrap = {
   display: 'flex',
   flexDirection: 'column',
   gap: 10,
-};
-
-const chartSvg = {
-  width: '100%',
-  height: 240,
-  borderRadius: 18,
-  background: 'rgba(255,255,255,0.02)',
-};
-
-const chartAxis = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  color: '#94a3b8',
-  fontSize: 12,
-  padding: '0 6px',
-};
-
-const actionLine = {
-  display: 'flex',
-  gap: 10,
-  alignItems: 'flex-start',
-  padding: '12px 0',
-  borderBottom: '1px solid rgba(255,255,255,0.06)',
-};
-
-const actionDot = {
-  width: 8,
-  height: 8,
-  marginTop: 7,
-  borderRadius: '50%',
-  background: 'linear-gradient(135deg, #7c6ff7, #38bdf8)',
-  boxShadow: '0 0 0 6px rgba(124,111,247,0.08)',
-  flexShrink: 0,
 };
 
 const tabsBar = {

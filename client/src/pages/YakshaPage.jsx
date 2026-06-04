@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { yakshaChat } from '../api';
 
 const recentConversations = [
   { title: 'NOC application timeline', meta: '2 hours ago' },
@@ -32,6 +33,10 @@ const assistantFeatures = [
   'FAQ Help',
 ];
 
+function formatTime(date) {
+  return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+}
+
 function YakshaPage() {
   const [messages, setMessages] = useState([
     {
@@ -40,16 +45,68 @@ function YakshaPage() {
     },
   ]);
   const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  function sendMessage() {
-    if (!input.trim()) return;
-    const userMessage = { role: 'user', text: input.trim() };
-    const aiMessage = {
-      role: 'ai',
-      text: `That is a great question! Here is a quick response based on Samagama guidance for: "${input.trim()}".`,
-    };
-    setMessages(prev => [...prev, userMessage, aiMessage]);
+  // Build the messages array for the API — only keep user/ai roles
+  const buildApiMessages = (currentMessages) =>
+    currentMessages
+      .filter(m => m.role === 'user' || m.role === 'ai')
+      .map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }));
+
+  async function sendMessage() {
+    const text = input.trim();
+    if (!text || loading) return;
+
+    setError('');
+
+    // Optimistically append user message
+    const userMessage = { role: 'user', text, time: formatTime(new Date()) };
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput('');
+    setLoading(true);
+
+    // Build the history to send to the API
+    const historyMessages = buildApiMessages(newMessages);
+
+    try {
+      const data = await yakshaChat(historyMessages);
+
+      if (data.error) {
+        // Show graceful error and keep user message visible
+        const errorText =
+          data.error === 'Groq API key not configured on server'
+            ? 'AI is not configured yet. Please ask the admin to add the GROQ_API_KEY to the server .env file.'
+            : data.error === 'Invalid or expired token'
+            ? 'Your session expired. Please log out and log in again.'
+            : `Yaksha is unavailable: ${data.error}`;
+
+        setError(errorText);
+        // Remove the optimistic user message on error to avoid confusion
+        setMessages(prev => prev.slice(0, -1));
+      } else if (data.reply) {
+        // Append the AI response
+        setMessages(prev => [
+          ...prev,
+          { role: 'ai', text: data.reply, time: formatTime(new Date()) },
+        ]);
+      } else {
+        throw new Error('Unexpected response');
+      }
+    } catch (err) {
+      setError('Could not reach Yaksha. Please check your connection and try again.');
+      setMessages(prev => prev.slice(0, -1));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   }
 
   function startNewChat() {
@@ -60,6 +117,8 @@ function YakshaPage() {
       },
     ]);
     setInput('');
+    setError('');
+    setLoading(false);
   }
 
   return (
@@ -100,7 +159,12 @@ function YakshaPage() {
             </div>
             <div className="sidebar-list">
               {recentConversations.map(item => (
-                <button key={item.title} className="sidebar-item chat-item" type="button" onClick={() => setInput(item.title)}>
+                <button
+                  key={item.title}
+                  className="sidebar-item chat-item"
+                  type="button"
+                  onClick={() => setInput(item.title)}
+                >
                   <strong>{item.title}</strong>
                   <span>{item.meta}</span>
                 </button>
@@ -114,7 +178,12 @@ function YakshaPage() {
             </div>
             <div className="sidebar-list topic-list">
               {suggestedTopics.map(item => (
-                <button key={item} onClick={() => setInput(item)} type="button" className="sidebar-item topic-item">
+                <button
+                  key={item}
+                  onClick={() => setInput(item)}
+                  type="button"
+                  className="sidebar-item topic-item"
+                >
                   {item}
                 </button>
               ))}
@@ -152,7 +221,12 @@ function YakshaPage() {
 
                 <div className="quick-prompts">
                   {quickPrompts.map(prompt => (
-                    <button key={prompt} type="button" className="quick-prompt-card" onClick={() => setInput(prompt)}>
+                    <button
+                      key={prompt}
+                      type="button"
+                      className="quick-prompt-card"
+                      onClick={() => setInput(prompt)}
+                    >
                       <strong>{prompt}</strong>
                       <span>Tap to ask Yaksha</span>
                     </button>
@@ -165,24 +239,59 @@ function YakshaPage() {
               <div key={index} className={`chat-row ${message.role}`}>
                 <div className={`chat-bubble ${message.role}`}>
                   <div className="bubble-top">
-                    <span className="bubble-name">{message.role === 'ai' ? 'Yaksha' : 'You'}</span>
-                    <span className="bubble-time">{message.role === 'ai' ? 'Just now' : 'Sent'}</span>
+                    <span className="bubble-name">
+                      {message.role === 'ai' ? 'Yaksha' : 'You'}
+                    </span>
+                    <span className="bubble-time">{message.time || 'Just now'}</span>
                   </div>
                   <p>{message.text}</p>
                 </div>
               </div>
             ))}
+
+            {loading && (
+              <div className="chat-row ai">
+                <div className="chat-bubble ai">
+                  <div className="bubble-top">
+                    <span className="bubble-name">Yaksha</span>
+                    <span className="bubble-time">Thinking…</span>
+                  </div>
+                  <p style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                    Yaksha is thinking…
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="chat-row ai">
+                <div className="chat-bubble ai" style={{ border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
+                  <div className="bubble-top">
+                    <span className="bubble-name">Yaksha</span>
+                    <span className="bubble-time" style={{ color: '#ef4444' }}>⚠ Error</span>
+                  </div>
+                  <p style={{ color: '#ef4444' }}>{error}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="chat-composer">
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Ask Yaksha anything..."
               rows="2"
+              disabled={loading}
             />
-            <button className="primary-btn send-btn" onClick={sendMessage} type="button">
-              Send
+            <button
+              className="primary-btn send-btn"
+              onClick={sendMessage}
+              type="button"
+              disabled={loading || !input.trim()}
+            >
+              {loading ? 'Sending…' : 'Send'}
             </button>
           </div>
         </main>

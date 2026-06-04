@@ -1,6 +1,7 @@
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AuthContext from '../authContext';
+import { fetchDoubts, submitDoubt, answerDoubt, voteDoubt, approveDoubt, rejectDoubt } from '../api';
 
 const topicChips = [
   'NOC', 'Eligibility', 'Certificate', 'Interview', 'Offer Letter', 'Stipend', 'Remote Internship',
@@ -313,7 +314,8 @@ const initialDiscussions = [
 function CommunityHubPage() {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
-  const [discussions, setDiscussions] = useState(initialDiscussions);
+  const [discussions, setDiscussions] = useState([]);
+  const [loadingDiscussions, setLoadingDiscussions] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeChip, setActiveChip] = useState('All');
   const [feedTab, setFeedTab] = useState('All Discussions');
@@ -323,9 +325,73 @@ function CommunityHubPage() {
   const [draft, setDraft] = useState({ title: '', description: '', category: 'NOC', tags: '', screenshot: null });
   const [replyOpen, setReplyOpen] = useState(null);
   const [replyText, setReplyText] = useState('');
+  const myUserId = sessionStorage.getItem('samagama-user-id') || '';
+
+  function timeAgo(dateStr) {
+    if (!dateStr) return 'Recently';
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  }
+
+  function transformDoubt(d) {
+    return {
+      id: d._id || d.id,
+      title: d.title,
+      preview: (d.body || '').slice(0, 120),
+      author: d.authorName || 'Student',
+      authorSp: 0,
+      badge: 'Community Member',
+      time: timeAgo(d.createdAt),
+      category: (d.tags || [])[0] || 'General',
+      tags: d.tags || [],
+      answersCount: (d.answers || []).length,
+      views: 0,
+      status: d.status === 'approved' ? (d.solved ? 'Resolved' : 'Open') : 'Community Reviewing',
+      resolutionState: d.solved ? 'resolved' : (d.status === 'approved' ? 'open' : 'reviewing'),
+      helpfulBy: d.votes || 0,
+      isMine: String(d.author || '') === String(myUserId),
+      canAccept: String(d.author || '') === String(myUserId),
+      questionMeta: {
+        author: d.authorName || 'Student',
+        date: d.createdAt ? new Date(d.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+        category: (d.tags || [])[0] || 'General',
+        tags: d.tags || [],
+        views: 0,
+        status: d.status === 'approved' ? (d.solved ? 'Resolved' : 'Open') : 'Community Reviewing',
+      },
+      body: d.body || '',
+      answers: (d.answers || []).map(a => ({
+        id: a._id || a.id,
+        user: a.userName || 'Student',
+        role: 'Student',
+        sp: 0,
+        badge: 'Community Member',
+        content: a.text,
+        helpful: 0,
+        accepted: false,
+        replies: [],
+      })),
+    };
+  }
+
+  async function refreshDiscussions() {
+    setLoadingDiscussions(true);
+    try {
+      const raw = await fetchDoubts();
+      setDiscussions(Array.isArray(raw) ? raw.map(transformDoubt) : []);
+    } catch { setDiscussions([]); } finally { setLoadingDiscussions(false); }
+  }
+
+  useEffect(() => { refreshDiscussions(); }, []);
 
   const selectedDiscussion = useMemo(
-    () => discussions.find(item => item.id === selectedId) || null,
+    () => discussions.find(item => item.id === selectedId || item._id === selectedId) || null,
     [discussions, selectedId],
   );
 
@@ -362,7 +428,7 @@ function CommunityHubPage() {
   function updateDiscussion(id, updater) {
     setDiscussions(prev =>
       prev.map(item => {
-        if (item.id !== id) return item;
+        if (item.id !== id && item._id !== id) return item;
         return typeof updater === 'function' ? updater(item) : item;
       }),
     );
@@ -447,14 +513,17 @@ function CommunityHubPage() {
       answers: [],
     };
 
-    setDiscussions(prev => [newDiscussion, ...prev]);
-    setDraft({ title: '', description: '', category: 'NOC', tags: '', screenshot: null });
-    setSubmitMessage('Question Posted Successfully');
-    setTimeout(() => {
-      setAskOpen(false);
-      setSubmitMessage('');
-      openDiscussion(newDiscussion.id);
-    }, 900);
+    try {
+      await submitDoubt({
+        title: draft.title.trim(),
+        body: draft.description.trim(),
+        tags: draft.tags.split(',').map(t => t.trim()).filter(Boolean),
+      });
+      setDraft({ title: '', description: '', category: 'NOC', tags: '', screenshot: null });
+      setSubmitMessage('Question Posted Successfully');
+      await refreshDiscussions();
+      setTimeout(() => { setAskOpen(false); setSubmitMessage(''); }, 900);
+    } catch { setSubmitMessage('Failed to post. Please try again.'); }
   }
 
   const totalDiscussions = 4821;
@@ -582,7 +651,7 @@ function CommunityHubPage() {
 
               <div style={feedList}>
                 {filteredDiscussions.map(item => (
-                  <article key={item.id} style={discussionCard} onClick={() => openDiscussion(item.id)}>
+                  <article key={item.id || item._id} style={discussionCard} onClick={() => openDiscussion(item.id || item._id)}>
                     <div style={discussionTop}>
                       <div style={discussionCopy}>
                         <div style={discussionTitleRow}>
