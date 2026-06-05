@@ -4,8 +4,8 @@
   "description": "Samagama MERN Backend — IIT Ropar Internship Platform",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node --tls-min-v1.2 server.js",
+    "dev": "nodemon --exec \"node --tls-min-v1.2\" server.js",
     "seed": "node seed.js"
   },
   "dependencies": {
@@ -17,6 +17,7 @@
     "express-validator": "^7.0.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.20.0",
     "mongoose": "^8.1.1",
     "multer": "^1.4.5-lts.1",
     "uuid": "^9.0.0"

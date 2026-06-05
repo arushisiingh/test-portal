@@ -1,15 +1,62 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const { requireAuth } = require('../middleware/auth');
+
+function getMongoHost(uri) {
+  if (!uri) return 'unset';
+  try {
+    const parsed = new URL(uri);
+    return parsed.host || 'unknown-host';
+  } catch {
+    const withoutCredentials = uri.replace(/\/\/[^@]+@/, '//***@');
+    return withoutCredentials.split('/')[2] || 'unparseable-uri';
+  }
+}
+
+function logRegisterDiagnostics(req) {
+  const { password, ...safeBody } = req.body || {};
+  console.log('[Auth Register] Incoming request', {
+    method: req.method,
+    path: req.originalUrl,
+    body: safeBody,
+  });
+  console.log('[Auth Register] Mongoose state', {
+    readyState: mongoose.connection.readyState,
+    dbName: mongoose.connection.name || '',
+    host: mongoose.connection.host || '',
+    mongoUriHost: getMongoHost(process.env.MONGODB_URI),
+    userModelConnectionState: User.db.readyState,
+    userModelDbName: User.db.name || '',
+    sameDefaultConnection: User.db === mongoose.connection,
+  });
+}
 
 function sendAuthError(res, error, status = 500) {
   const message = error?.message || 'Authentication service unavailable';
   console.error('[Auth Route]', message);
   return res.status(status).json({ error: message });
 }
+
+function requireDatabase(req, res, next) {
+  if (mongoose.connection.readyState === 1 && User.db.readyState === 1) {
+    return next();
+  }
+
+  console.error('[Auth Route] Database not connected', {
+    readyState: mongoose.connection.readyState,
+    userModelConnectionState: User.db.readyState,
+    mongoUriHost: getMongoHost(process.env.MONGODB_URI),
+  });
+  return res.status(503).json({
+    error: 'Database not connected. Check MongoDB cluster connection and restart the server.',
+  });
+}
+
+router.use(requireDatabase);
 
 // POST /api/auth/register
 router.post('/register', [
@@ -18,6 +65,8 @@ router.post('/register', [
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
 ], async (req, res) => {
   try {
+    logRegisterDiagnostics(req);
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 

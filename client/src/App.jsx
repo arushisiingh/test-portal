@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Routes, Route, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
 import StudentDashboard from './pages/StudentDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import FaqPage from './pages/FaqPage';
@@ -41,7 +42,7 @@ class RouteErrorBoundary extends React.Component {
 function useAuthBootstrap() {
   const [user, setUser] = useState(null);
   // authLoaded = false while we validate the stored token
-  const [authLoaded, setAuthLoaded] = useState(false);
+  const [authLoaded, setAuthLoaded] = useState(() => !sessionStorage.getItem('samagama-token'));
   const [bootError, setBootError] = useState('');
 
   useEffect(() => {
@@ -50,7 +51,6 @@ function useAuthBootstrap() {
     async function validateToken() {
       const storedToken = sessionStorage.getItem('samagama-token');
       if (!storedToken) {
-        setAuthLoaded(true);
         return;
       }
 
@@ -65,6 +65,7 @@ function useAuthBootstrap() {
         sessionStorage.setItem('samagama-user-id', u._id);
         sessionStorage.setItem('samagama-role', u.role);
         sessionStorage.setItem('samagama-email', u.email || '');
+        sessionStorage.setItem('samagama-user:v1', JSON.stringify(u));
         sessionStorage.setItem(
           'samagama-display-name',
           u.name || deriveDisplayName(u.role, u.email)
@@ -78,6 +79,8 @@ function useAuthBootstrap() {
         sessionStorage.removeItem('samagama-user-id');
         sessionStorage.removeItem('samagama-role');
         sessionStorage.removeItem('samagama-email');
+        sessionStorage.removeItem('samagama-user:v1');
+        sessionStorage.removeItem('samagama-user');
         sessionStorage.removeItem('samagama-display-name');
         setBootError('Session expired. Please sign in again.');
       } finally {
@@ -112,28 +115,36 @@ function App() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  function handleLogin(selectedRole, email, userData) {
+  const handleLogin = useCallback((selectedRole, email, userData) => {
     setUser(selectedRole);
     sessionStorage.setItem('samagama-role', selectedRole);
     sessionStorage.setItem('samagama-email', email || '');
     sessionStorage.setItem('samagama-display-name', deriveDisplayName(selectedRole, email));
     if (userData?._id) sessionStorage.setItem('samagama-user-id', userData._id);
+    if (userData) sessionStorage.setItem('samagama-user:v1', JSON.stringify(userData));
     if (selectedRole === 'admin') navigate('/admin');
     else navigate('/dashboard');
-  }
+  }, [navigate, setUser]);
 
-  function handleLogout() {
+  const handleLogout = useCallback(() => {
     setUser(null);
     sessionStorage.removeItem('samagama-token');
     sessionStorage.removeItem('samagama-user-id');
     sessionStorage.removeItem('samagama-role');
     sessionStorage.removeItem('samagama-email');
+    sessionStorage.removeItem('samagama-user:v1');
+    sessionStorage.removeItem('samagama-user');
     sessionStorage.removeItem('samagama-display-name');
     navigate('/');
-  }
+  }, [navigate, setUser]);
+
+  const authContextValue = useMemo(() => ({
+    user,
+    handleLogin,
+    handleLogout,
+  }), [user, handleLogin, handleLogout]);
 
   const isHome = location.pathname === '/';
-  const isLogin = location.pathname === '/login';
 
   // Block all rendering until auth is validated
   if (!authLoaded) {
@@ -161,7 +172,7 @@ function App() {
   }
 
   return (
-    <AuthContext.Provider value={{ user, handleLogin, handleLogout }}>
+    <AuthContext.Provider value={authContextValue}>
       <div className="app-shell">
 
         {/* ── Homepage Header ───────────────────────────── */}
@@ -172,7 +183,7 @@ function App() {
             </div>
             <nav className="nav-links">
               {user ? (
-                <button onClick={handleLogout} className="sign-btn ghost">Sign Out</button>
+                <button type="button" onClick={handleLogout} className="sign-btn ghost">Sign Out</button>
               ) : (
                 <NavLink to="/login" className="sign-btn">Sign In</NavLink>
               )}
@@ -203,6 +214,14 @@ function App() {
                 user
                   ? <Navigate to={user === 'admin' ? '/admin' : '/dashboard'} />
                   : <LoginPage onLogin={handleLogin} />
+              }
+            />
+            <Route
+              path="/signup"
+              element={
+                user
+                  ? <Navigate to={user === 'admin' ? '/admin' : '/dashboard'} />
+                  : <SignupPage onRegister={handleLogin} />
               }
             />
             <Route

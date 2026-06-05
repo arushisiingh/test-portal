@@ -1,4 +1,4 @@
-const API_BASE = import.meta?.env?.VITE_API_URL || '';
+const API_BASE = import.meta?.env?.VITE_API_URL || (import.meta?.env?.DEV ? 'http://localhost:4000' : '');
 
 async function readJsonResponse(response) {
   const text = await response.text();
@@ -33,14 +33,27 @@ export async function apiLogin(email, password) {
 }
 
 export async function apiRegister(payload) {
-  const res = await fetch(`${API_BASE}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await readJsonResponse(res);
-  if (!res.ok) throw new Error(data.error || 'Registration failed');
-  return data;
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await readJsonResponse(res);
+    if (!res.ok) {
+      const validationMessage = Array.isArray(data?.errors)
+        ? data.errors.map(error => error.msg).filter(Boolean).join(', ')
+        : '';
+      throw new Error(data?.error || data?.message || validationMessage || 'Registration failed');
+    }
+    if (!data || typeof data !== 'object') throw new Error('Registration response was empty');
+    return data;
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Failed to fetch') {
+      throw new Error('Unable to reach the server. Please try again.');
+    }
+    throw error;
+  }
 }
 
 export async function apiGetMe() {

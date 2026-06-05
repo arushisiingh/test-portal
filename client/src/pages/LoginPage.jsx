@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiLogin } from '../api';
 
 const ROLES = [
@@ -7,6 +8,7 @@ const ROLES = [
 ];
 
 function LoginPage({ onLogin }) {
+  const navigate = useNavigate();
   const [selectedRole, setSelectedRole] = useState('student');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -67,8 +69,9 @@ function LoginPage({ onLogin }) {
 
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.field}>
-            <label style={styles.label}>Email Address</label>
+            <label htmlFor="login-email" style={styles.label}>Email Address</label>
             <input
+              id="login-email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -79,8 +82,9 @@ function LoginPage({ onLogin }) {
           </div>
 
           <div style={styles.field}>
-            <label style={styles.label}>Password</label>
+            <label htmlFor="login-password" style={styles.label}>Password</label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
@@ -99,7 +103,7 @@ function LoginPage({ onLogin }) {
 
         <div style={styles.footer}>
           {!showForgot ? (
-            <button style={styles.linkBtn} onClick={() => setShowForgot(true)}>
+            <button type="button" style={styles.linkBtn} onClick={() => setShowForgot(true)}>
               Forgot Password?
             </button>
           ) : (
@@ -108,7 +112,10 @@ function LoginPage({ onLogin }) {
             </p>
           )}
           <p style={styles.signupHint}>
-            Not registered? <button style={styles.linkBtn}>Sign Up →</button>
+            Not registered?{' '}
+            <button type="button" style={styles.linkBtn} onClick={() => navigate('/signup')}>
+              Sign Up →
+            </button>
           </p>
         </div>
       </div>
@@ -207,6 +214,7 @@ const styles = {
   linkBtn: {
     background: 'none', border: 'none', color: '#7c6ff7',
     fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0,
+    textDecoration: 'none',
   },
   forgotMsg: { margin: 0, color: '#6ee7b7', fontSize: 13, textAlign: 'center' },
   signupHint: { margin: 0, color: '#64748b', fontSize: 12 },

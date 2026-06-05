@@ -30,6 +30,8 @@ const { demoLeaderboardStudents } = require('./demoFixtures');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+mongoose.set('bufferCommands', false);
+
 // ── Security middleware ───────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }));
@@ -94,7 +96,7 @@ async function start() {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/samagama';
 
   try {
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 8000 });
     console.log('✅ MongoDB connected:', mongoUri);
 
     const faqCount = await Faq.countDocuments();
