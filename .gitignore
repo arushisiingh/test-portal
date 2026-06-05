@@ -6,3 +6,4 @@ dist
 server/.env
 *_REPORT.md
 server/uploads/
+.claude/settings.local.json
